@@ -1,5 +1,5 @@
 # bot.py
-import os, re, time, json, html, logging, requests, tempfile, random
+import os, re, time, json, html, logging, requests, tempfile, random, shutil
 from requests.auth import HTTPBasicAuth
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -13,8 +13,11 @@ BOT_TOKEN = "8480045051:AAGDht_XMNXuF2ZNUKC49J_m_n2GTGkoyys"
 CHAT_ID   = -1002951199599  # (GERİYE UYUMLULUK) routes.json boşsa buraya gönderilir
 
 POLL_INTERVAL = 10
-SEEN_FILE   = "seen.json"
-ROUTES_FILE = "routes.json"  # { "<chat_id>": [1,5,7], ... }
+
+# Dosyaları script klasörüne sabitle
+BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
+SEEN_FILE   = os.path.join(BASE_DIR, "seen.json")
+ROUTES_FILE = os.path.join(BASE_DIR, "routes.json")  # { "<chat_id>": [1,5,7], ... }
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
 log = logging.getLogger("goip-forwarder")
@@ -50,8 +53,10 @@ def load_seen():
             return set()
     return set()
 
-def _atomic_write(path:str, data_text:str):
-    fd, tmp = tempfile.mkstemp(prefix="tmp_", suffix=".json")
+def _atomic_write(path: str, data_text: str):
+    # tmp dosyayı hedefle aynı klasörde aç → cross-device hatası olmaz
+    d = os.path.dirname(os.path.abspath(path)) or "."
+    fd, tmp_path = tempfile.mkstemp(prefix=".tmp_", suffix=".json", dir=d)
     with os.fdopen(fd, "w", encoding="utf-8") as f:
         f.write(data_text)
         f.flush()
@@ -59,7 +64,10 @@ def _atomic_write(path:str, data_text:str):
             os.fsync(f.fileno())
         except:
             pass
-    os.replace(tmp, path)
+    try:
+        os.replace(tmp_path, path)   # aynı FS → atomik
+    except OSError:
+        shutil.move(tmp_path, path)
 
 def save_seen(seen:set):
     _atomic_write(SEEN_FILE, json.dumps(list(seen), ensure_ascii=False))
@@ -141,7 +149,7 @@ def tg_fetch_updates(timeout=20):
     r = tg_api("getUpdates", {"timeout": timeout, "offset": UPD_OFFSET}, use_get=True, timeout=timeout+5)
     if not r:
         return []
-    # Webhook açıkken 409 döner → otomatik temizle ve bir kere daha dene
+    # Webhook açıksa 409 gelebilir → temizle ve tekrar dene
     if r.status_code == 409:
         log.warning("getUpdates 409: webhook aktif. Silmeyi deniyorum…")
         tg_delete_webhook(drop=False)
@@ -224,7 +232,7 @@ def initial_warmup_seen(seen:set):
 # =============== KOMUTLAR ===============
 # /whereami  -> bulunduğun chat id
 # /numaraver L1-L5 -> örnek: "L1-L5" ya da "L1 L5" ya da "1,5"
-CMD_RE = re.compile(r'^/([a-zA-Z_]+)(?:@\w+)?(?:\s+(.*))?$')  # /komut@Bot argümanlar
+CMD_RE  = re.compile(r'^/([a-zA-Z_]+)(?:@\w+)?(?:\s+(.*))?$')  # /komut@Bot argümanlar
 LINE_RE = re.compile(r'[lL]?(\d+)')
 
 def parse_line_spec(spec:str):
@@ -351,6 +359,8 @@ def main():
                 key = make_key(row)
                 if key in seen:
                     continue
+
+                # Sadece yeni gelenleri gönder → routing
                 sent = deliver_sms_to_routes(row, routes)
                 if sent > 0:
                     routed += sent
