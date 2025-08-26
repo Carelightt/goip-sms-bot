@@ -1,5 +1,5 @@
 # bot.py
-import os, re, time, json, html, logging, threading, requests
+import os, re, time, json, html, logging, requests
 from requests.auth import HTTPBasicAuth
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -80,7 +80,7 @@ def fetch_html() -> str:
 
 def parse_sms_blocks(html_text:str):
     """
-    JS blokları:
+    Sayfadaki JS blokları:
     sms = ["MM-DD HH:MM:SS,NUM,CONTENT", ...];
     pos=...;
     sms_row_insert(lX_sms_store, sms, pos, LINE)
@@ -184,14 +184,16 @@ def initial_warmup_seen(seen:set):
 # ===== /numaraver komutu (admin-only) =====
 def parse_lines_arg(arg:str):
     """
-    Desteklenen:
+    Girdi örnekleri:
       L1-L5
-      L3
+      l3
       L2,L4,L7
       L1-L3,L6,L10-L12
+    Çıktı: [int, ...] (1..MAX_LINE aralığında filtrelenmiş ve unique)
     """
     arg = (arg or "").upper().replace(" ", "")
     targets = set()
+    # virgülle parçalara ayır
     for token in arg.split(","):
         token = token.strip()
         if not token:
@@ -200,7 +202,8 @@ def parse_lines_arg(arg:str):
             a,b = token.split("-",1)
             a = int(a.replace("L",""))
             b = int(b.replace("L",""))
-            for x in range(min(a,b), max(a,b)+1):
+            rng = range(min(a,b), max(a,b)+1)
+            for x in rng:
                 if 1 <= x <= MAX_LINE:
                     targets.add(x)
         else:
@@ -226,6 +229,7 @@ def poll_updates_and_handle(subs:dict, last_offset:int) -> int:
 
     for upd in data.get("result", []):
         last_offset = max(last_offset, upd.get("update_id", last_offset))
+
         msg = upd.get("message") or upd.get("edited_message")
         if not msg:
             continue
@@ -237,11 +241,13 @@ def poll_updates_and_handle(subs:dict, last_offset:int) -> int:
         if not text.startswith("/"):
             continue
 
+        # Sadece admin
         if from_id != ADMIN_ID:
             tg_send_message(chat_id, "⛔ Bu komutu kullanma yetkin yok.")
             continue
 
         if text.startswith("/numaraver"):
+            # Argüman al: /numaraver L1-L5
             parts = text.split(maxsplit=1)
             if len(parts) == 1:
                 tg_send_message(chat_id, "Kullanım: <code>/numaraver L1-L5</code> veya <code>/numaraver L2,L4,L7</code>")
@@ -262,8 +268,8 @@ def poll_updates_and_handle(subs:dict, last_offset:int) -> int:
 
     return last_offset
 
-# ===== Worker döngüsü =====
-def run_worker():
+# ===== Main loop =====
+def main():
     seen = load_seen()
     subs = load_subs()
     offset = load_offset()
@@ -273,9 +279,11 @@ def run_worker():
 
     while True:
         try:
+            # 1) Telegram komutlarını dinle
             offset = poll_updates_and_handle(subs, offset)
             save_offset(offset)
 
+            # 2) GoIP'ten SMS çek
             html = fetch_html()
             if not html:
                 time.sleep(3)
@@ -287,9 +295,12 @@ def run_worker():
                 key = make_key(row)
                 if key in seen:
                     continue
+
                 delivered = send_to_subscribers(subs, row['line'], row['num'], row['content'], row['date'])
+                # Abone yoksa hiç göndermeyelim (global spam olmasın)
                 if delivered > 0:
                     newc += 1
+
                 seen.add(key)
 
             if newc:
@@ -305,31 +316,5 @@ def run_worker():
 
         time.sleep(POLL_INTERVAL)
 
-# ===== Web Service healthcheck (opsiyonel) =====
-def maybe_start_http():
-    port = os.environ.get("PORT")
-    if not port:
-        # Background Worker modunda PORT yok → sadece worker çalıştır.
-        run_worker()
-        return
-
-    # Web Service modundasın → küçük bir HTTP server aç
-    from flask import Flask
-    app = Flask(__name__)
-
-    @app.get("/")
-    def home():
-        return "GoIP SMS forwarder çalışıyor.", 200
-
-    @app.get("/health")
-    def health():
-        return "ok", 200
-
-    # Worker’ı ayrı thread’de çalıştır
-    t = threading.Thread(target=run_worker, daemon=True)
-    t.start()
-
-    app.run(host="0.0.0.0", port=int(port))
-
 if __name__ == "__main__":
-    maybe_start_http()
+    main()
