@@ -81,6 +81,7 @@ def load_routes() -> dict:
                     cid = str(int(k))
                 except Exception:
                     cid = str(k)
+                # JSON'dan liste gelir → bellekte set tutuyoruz
                 fixed[cid] = set(int(x) for x in v if str(x).isdigit())
             return fixed
         except Exception as e:
@@ -91,6 +92,45 @@ def load_routes() -> dict:
 def save_routes(routes:dict):
     serializable = {cid: sorted(list(v)) for cid, v in routes.items()}
     _atomic_write(ROUTES_FILE, json.dumps(serializable, ensure_ascii=False, indent=2))
+
+# =============== GOIP ===============
+def fetch_html():
+    r = SESSION.get(GOIP_URL, timeout=(3, 6))
+    if r.status_code == 200:
+        return r.text
+    log.warning("GoIP HTTP durum kodu: %s", r.status_code)
+    return ""
+
+def parse_sms_blocks(html_text:str):
+    results=[]
+    for m in re.finditer(r'sms=\s*\[(.*?)\];\s*pos=(\d+);\s*sms_row_insert\(.*?(\d+)\)', html_text, flags=re.S):
+        arr_str, pos, line = m.groups()
+        line = int(line)
+        msgs = re.findall(r'"([^"]*)"', arr_str)
+        for raw in msgs:
+            raw = raw.strip()
+            if not raw:
+                continue
+            parts = raw.split(",", 2)  # date, num, content
+            if len(parts) < 3:
+                continue
+            date, num, content = parts
+            results.append({
+                "line": line,
+                "date": date.strip(),
+                "num":  num.strip(),
+                "content": content.strip()
+            })
+    return results
+
+# =============== HELPERS ===============
+def _norm(s: str) -> str:
+    s = s.replace("\r", "").strip()
+    s = re.sub(r"\s+", " ", s)
+    return s
+
+def make_key(row) -> str:
+    return f"{row['line']}::{_norm(row.get('date',''))}::{_norm(row.get('num',''))}::{_norm(row.get('content',''))}"
 
 def initial_warmup_seen(seen:set):
     html_txt = fetch_html()
@@ -184,36 +224,6 @@ def tg_fetch_updates(timeout=20):
         UPD_OFFSET = results[-1]["update_id"] + 1
     return results
 
-# =============== GOIP ===============
-def fetch_html():
-    r = SESSION.get(GOIP_URL, timeout=(3, 6))
-    if r.status_code == 200:
-        return r.text
-    log.warning("GoIP HTTP durum kodu: %s", r.status_code)
-    return ""
-
-def parse_sms_blocks(html_text:str):
-    results=[]
-    for m in re.finditer(r'sms=\s*\[(.*?)\];\s*pos=(\d+);\s*sms_row_insert\(.*?(\d+)\)', html_text, flags=re.S):
-        arr_str, pos, line = m.groups()
-        line = int(line)
-        msgs = re.findall(r'"([^"]*)"', arr_str)
-        for raw in msgs:
-            raw = raw.strip()
-            if not raw:
-                continue
-            parts = raw.split(",", 2)  # date, num, content
-            if len(parts) < 3:
-                continue
-            date, num, content = parts
-            results.append({
-                "line": line,
-                "date": date.strip(),
-                "num":  num.strip(),
-                "content": content.strip()
-            })
-    return results
-
 # =============== KOMUTLAR ===============
 LINE_RE = re.compile(r'[lL]?(\d+)')
 
@@ -228,6 +238,7 @@ def handle_command(text:str, chat_id:str, routes:dict):
     cmd, arg = m.groups()
     cmd = cmd.lower()
 
+    # /start hiçbir şey yazmasın
     if cmd == "start":
         return routes
 
@@ -252,6 +263,7 @@ def handle_command(text:str, chat_id:str, routes:dict):
         tg_send_message(chat_id, f"✅ {', '.join('L'+str(x) for x in sorted(routes[str(chat_id)]))}  BU GRUBA EKLENDİ.")
         return routes
 
+    # /kaldır alias'ları: kaldır, kaldir, iptal, sil, remove + hepsi
     if cmd in {"kaldır", "kaldir", "iptal", "sil", "remove"}:
         if not arg:
             tg_send_message(chat_id,
@@ -268,7 +280,7 @@ def handle_command(text:str, chat_id:str, routes:dict):
                 save_routes(routes)
                 tg_send_message(chat_id, "❌ Tüm Numaralar kaldırıldı. Bu gruba artık SMS düşmeyecek.")
             else:
-                tg_send_message(chat_id, "Zaten hiç hat opsiyonlu değil.")
+                tg_send_message(chat_id, "ℹ️ Zaten hiç hat opsiyonlu değil.")
             return routes
 
         lines = parse_line_spec(arg)
@@ -303,6 +315,7 @@ def handle_command(text:str, chat_id:str, routes:dict):
             tg_send_message(chat_id, f"Aktif Linelar: <code>{', '.join('L'+str(x) for x in sorted(lines))}</code>")
         return routes
 
+    # bilinmeyen /komutlar için yardım
     tg_send_message(chat_id,
         "Komutlar:\n"
         "• /whereami → chat_id gösterir\n"
@@ -311,6 +324,24 @@ def handle_command(text:str, chat_id:str, routes:dict):
         "• /kaldır hepsi → tüm hatları sıfırlar\n"
         "• /aktif → aktif hatları listele"
     )
+    return routes
+
+def poll_and_handle_updates(routes:dict) -> dict:
+    updates = tg_fetch_updates(timeout=10)
+    if not updates:
+        return routes
+    for u in updates:
+        msg = u.get("message") or u.get("channel_post")
+        if not msg:
+            continue
+        chat = msg.get("chat") or {}
+        chat_id = chat.get("id")
+        if not chat_id:
+            continue
+        text = msg.get("text") or ""
+        if not text:
+            continue
+        routes = handle_command(text, str(chat_id), routes)
     return routes
 
 # =============== ROUTING ===============
