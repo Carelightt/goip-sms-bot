@@ -210,8 +210,8 @@ def handle_command(text:str, chat_id:str, routes:dict):
     cmd, arg = m.groups()
     cmd = cmd.lower()
 
+    # /start hiçbir şey yazmasın
     if cmd == "start":
-        tg_send_message(chat_id, ".")
         return routes
 
     if cmd == "whereami":
@@ -248,17 +248,23 @@ def handle_command(text:str, chat_id:str, routes:dict):
             tg_send_message(chat_id, "Hatalı format. Örn: /kaldır L2 L3")
             return routes
         current = set(routes.get(str(chat_id), []))
+        removed_any = False
         for ln in lines:
             if ln in current:
                 current.remove(ln)
+                removed_any = True
         routes[str(chat_id)] = sorted(current)
         save_routes(routes)
-        if current:
-            tg_send_message(chat_id, f"❌ Kaldırıldı. Kalan hatlar: <code>{', '.join('L'+str(x) for x in current)}</code>")
+        if removed_any:
+            if current:
+                tg_send_message(chat_id, f"❌ Kaldırıldı. Kalan hatlar: <code>{', '.join('L'+str(x) for x in current)}</code>")
+            else:
+                tg_send_message(chat_id, "❌ Tüm hatlar kaldırıldı. Bu gruba artık SMS düşmeyecek.")
         else:
-            tg_send_message(chat_id, "❌ Tüm hatlar kaldırıldı. Bu gruba artık SMS düşmeyecek.")
+            tg_send_message(chat_id, "ℹ️ Belirttiğin hat(lar) zaten bu grupta yoktu.")
         return routes
 
+    # /aktif: bu grubun aktif hatları
     if cmd == "aktif":
         lines = routes.get(str(chat_id))
         if not lines:
@@ -267,6 +273,7 @@ def handle_command(text:str, chat_id:str, routes:dict):
             tg_send_message(chat_id, f"📜 Aktif Hatlar: <code>{', '.join('L'+str(x) for x in lines)}</code>")
         return routes
 
+    # Bilinmeyen komutlar
     tg_send_message(chat_id,
         "Komutlar:\n"
         "• /whereami → chat_id gösterir\n"
@@ -274,6 +281,24 @@ def handle_command(text:str, chat_id:str, routes:dict):
         "• /kaldır L1 L5 ... → hatları çıkar\n"
         "• /aktif → aktif hatları listele"
     )
+    return routes
+
+def poll_and_handle_updates(routes:dict) -> dict:
+    updates = tg_fetch_updates(timeout=10)
+    if not updates:
+        return routes
+    for u in updates:
+        msg = u.get("message") or u.get("channel_post")
+        if not msg:
+            continue
+        chat = msg.get("chat") or {}
+        chat_id = chat.get("id")
+        if not chat_id:
+            continue
+        text = msg.get("text") or ""
+        if not text:
+            continue
+        routes = handle_command(text, str(chat_id), routes)
     return routes
 
 # =============== ROUTING ===============
