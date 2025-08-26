@@ -10,7 +10,7 @@ GOIP_URL = "http://5.11.128.154:6060/default/en_US/tools.html?type=sms_inbox
 GOIP_USER = "user"
 GOIP_PASS = "9090"
 
-BOT_TOKEN = "8468644425:AAGJq2zEJiOSvrox8uqMv1VePrD9VsnrmDs"
+BOT_TOKEN = "8480045051:AAGDht_XMNXuF2ZNUKC49J_m_n2GTGkoyys"
 CHAT_ID = -1002951199599 # (GERİYE UYUMLULUK) routes.json boşsa buraya gönderilir
 
 POLL_INTERVAL = 10
@@ -373,4 +373,5 @@ while True:
 
 if name=="main":
 main()
+
 
