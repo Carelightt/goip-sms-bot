@@ -1,377 +1,339 @@
+# bot.py
 import os, re, time, json, html, logging, requests, tempfile, random
 from requests.auth import HTTPBasicAuth
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-==== AYARLAR ====
-
-GOIP_URL = "http://5.11.128.154:6060/default/en_US/tools.html?type=sms_inbox
-"
+# ==== AYARLAR ====
+GOIP_URL  = "http://5.11.128.154:6060/default/en_US/tools.html?type=sms_inbox"
 GOIP_USER = "user"
 GOIP_PASS = "9090"
 
 BOT_TOKEN = "8480045051:AAGDht_XMNXuF2ZNUKC49J_m_n2GTGkoyys"
-CHAT_ID = -1002951199599 # (GERİYE UYUMLULUK) routes.json boşsa buraya gönderilir
+CHAT_ID   = -1002951199599  # (GERİYE UYUMLULUK) routes.json boşsa buraya gönderilir
 
 POLL_INTERVAL = 10
-SEEN_FILE = "seen.json"
-ROUTES_FILE = "routes.json" # { "<chat_id>": [1,5,7], ... }
+SEEN_FILE   = "seen.json"
+ROUTES_FILE = "routes.json"  # { "<chat_id>": [1,5,7], ... }
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
 log = logging.getLogger("goip-forwarder")
 
----- HTTP session with retry/backoff ----
-
+# ---- HTTP session with retry/backoff ----
 def make_session() -> requests.Session:
-s = requests.Session()
-s.auth = HTTPBasicAuth(GOIP_USER, GOIP_PASS)
-s.headers.update({"User-Agent": "GoIP-SMS-Forwarder/1.0"})
-retry = Retry(
-total=3,
-connect=3,
-read=3,
-backoff_factor=0.6,
-status_forcelist=[502, 503, 504],
-allowed_methods=["GET", "POST"],
-raise_on_status=False,
-respect_retry_after_header=True,
-)
-adapter = HTTPAdapter(max_retries=retry, pool_connections=4, pool_maxsize=8)
-s.mount("http://", adapter)
-s.mount("https://", adapter)
-return s
+    s = requests.Session()
+    s.auth = HTTPBasicAuth(GOIP_USER, GOIP_PASS)
+    s.headers.update({"User-Agent": "GoIP-SMS-Forwarder/1.0"})
+    retry = Retry(
+        total=3,
+        connect=3,
+        read=3,
+        backoff_factor=0.6,
+        status_forcelist=[502, 503, 504],
+        allowed_methods=["GET", "POST"],
+        raise_on_status=False,
+        respect_retry_after_header=True,
+    )
+    adapter = HTTPAdapter(max_retries=retry, pool_connections=4, pool_maxsize=8)
+    s.mount("http://", adapter)
+    s.mount("https://", adapter)
+    return s
 
 SESSION = make_session()
 
-=============== STATE ===============
-
+# =============== STATE ===============
 def load_seen():
-if os.path.exists(SEEN_FILE):
-try:
-return set(json.load(open(SEEN_FILE, "r", encoding="utf-8")))
-except:
-return set()
-return set()
+    if os.path.exists(SEEN_FILE):
+        try:
+            return set(json.load(open(SEEN_FILE, "r", encoding="utf-8")))
+        except:
+            return set()
+    return set()
 
-def atomic_write(path:str, data_text:str):
-fd, tmp = tempfile.mkstemp(prefix="tmp", suffix=".json")
-with os.fdopen(fd, "w", encoding="utf-8") as f:
-f.write(data_text)
-f.flush()
-try:
-os.fsync(f.fileno())
-except:
-pass
-os.replace(tmp, path)
+def _atomic_write(path:str, data_text:str):
+    fd, tmp = tempfile.mkstemp(prefix="tmp_", suffix=".json")
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(data_text)
+        f.flush()
+        try:
+            os.fsync(f.fileno())
+        except:
+            pass
+    os.replace(tmp, path)
 
 def save_seen(seen:set):
-_atomic_write(SEEN_FILE, json.dumps(list(seen), ensure_ascii=False))
+    _atomic_write(SEEN_FILE, json.dumps(list(seen), ensure_ascii=False))
 
 def load_routes() -> dict:
-if os.path.exists(ROUTES_FILE):
-try:
-data = json.load(open(ROUTES_FILE, "r", encoding="utf-8"))
-# normalize: keys -> str, values -> sorted unique ints
-fixed = {}
-for k, v in data.items():
-try:
-cid = str(int(k))
-except:
-cid = str(k)
-lines = sorted({int(x) for x in v if isinstance(x, (int, str)) and str(x).isdigit()})
-fixed[cid] = lines
-return fixed
-except Exception as e:
-log.warning("routes.json okunamadı: %s", e)
-return {}
-return {}
+    if os.path.exists(ROUTES_FILE):
+        try:
+            data = json.load(open(ROUTES_FILE, "r", encoding="utf-8"))
+            fixed = {}
+            for k, v in data.items():
+                try:
+                    cid = str(int(k))
+                except:
+                    cid = str(k)
+                lines = sorted({int(x) for x in v if isinstance(x, (int, str)) and str(x).isdigit()})
+                fixed[cid] = lines
+            return fixed
+        except Exception as e:
+            log.warning("routes.json okunamadı: %s", e)
+            return {}
+    return {}
 
 def save_routes(routes:dict):
-_atomic_write(ROUTES_FILE, json.dumps(routes, ensure_ascii=False, indent=2))
+    _atomic_write(ROUTES_FILE, json.dumps(routes, ensure_ascii=False, indent=2))
 
-=============== TELEGRAM ===============
-
+# =============== TELEGRAM ===============
 def tg_send_message(chat_id, text, parse_mode="HTML", disable_web_page_preview=True):
-url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage
-"
-data = {
-"chat_id": str(chat_id),
-"text": text,
-"parse_mode": parse_mode,
-"disable_web_page_preview": "true" if disable_web_page_preview else "false"
-}
-try:
-r = SESSION.post(url, data=data, timeout=(3, 15))
-if r.status_code != 200:
-log.warning("Telegram hata: %s %s", r.status_code, r.text[:200])
-return False
-return True
-except requests.RequestException as e:
-log.warning("Telegram network hata: %s", e)
-return False
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    data = {
+        "chat_id": str(chat_id),
+        "text": text,
+        "parse_mode": parse_mode,
+        "disable_web_page_preview": "true" if disable_web_page_preview else "false",
+    }
+    try:
+        r = SESSION.post(url, data=data, timeout=(3, 15))
+        if r.status_code != 200:
+            log.warning("Telegram hata: %s %s", r.status_code, r.text[:200])
+            return False
+        return True
+    except requests.RequestException as e:
+        log.warning("Telegram network hata: %s", e)
+        return False
 
 def send_tg_formatted(chat_id, line, num, content, date):
-text = (
-f"📩 <b>Yeni SMS</b>\n"
-f"🧵 Line: <code>{line}</code>\n"
-f"👤 Gönderen: <code>{html.escape(num)}</code>\n"
-f"🕒 {html.escape(date)}\n"
-f"💬 <code>{html.escape(content)}</code>"
-)
-return tg_send_message(chat_id, text)
+    text = (
+        f"📩 <b>Yeni SMS</b>\n"
+        f"🧵 Line: <code>{line}</code>\n"
+        f"👤 Gönderen: <code>{html.escape(num)}</code>\n"
+        f"🕒 {html.escape(date)}\n"
+        f"💬 <code>{html.escape(content)}</code>"
+    )
+    return tg_send_message(chat_id, text)
 
-Basit long-polling updates
-
+# Basit long-polling updates
 UPD_OFFSET = 0
 
 def tg_fetch_updates(timeout=20):
-global UPD_OFFSET
-url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates
-"
-params = {"timeout": timeout, "offset": UPD_OFFSET}
-try:
-r = SESSION.get(url, params=params, timeout=(3, timeout+5))
-if r.status_code != 200:
-log.warning("getUpdates status: %s %s", r.status_code, r.text[:200])
-return []
-data = r.json()
-if not data.get("ok"):
-log.warning("getUpdates ok=false: %s", data)
-return []
-results = data.get("result", [])
-if results:
-UPD_OFFSET = results[-1]["update_id"] + 1
-return results
-except requests.RequestException as e:
-log.warning("getUpdates network hata: %s", e)
-return []
+    global UPD_OFFSET
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
+    params = {"timeout": timeout, "offset": UPD_OFFSET}
+    try:
+        r = SESSION.get(url, params=params, timeout=(3, timeout+5))
+        if r.status_code != 200:
+            log.warning("getUpdates status: %s %s", r.status_code, r.text[:200])
+            return []
+        data = r.json()
+        if not data.get("ok"):
+            log.warning("getUpdates ok=false: %s", data)
+            return []
+        results = data.get("result", [])
+        if results:
+            UPD_OFFSET = results[-1]["update_id"] + 1
+        return results
+    except requests.RequestException as e:
+        log.warning("getUpdates network hata: %s", e)
+        return []
 
-=============== GOIP ===============
-
+# =============== GOIP ===============
 def fetch_html():
-# timeout=(connect, read)
-r = SESSION.get(GOIP_URL, timeout=(3, 6))
-if r.status_code == 200:
-return r.text
-log.warning("GoIP HTTP durum kodu: %s", r.status_code)
-return ""
+    r = SESSION.get(GOIP_URL, timeout=(3, 6))
+    if r.status_code == 200:
+        return r.text
+    log.warning("GoIP HTTP durum kodu: %s", r.status_code)
+    return ""
 
 def parse_sms_blocks(html_text:str):
-results=[]
-# sms=[ ... ]; pos=..; sms_row_insert(..., line)
-for m in re.finditer(r'sms=\s*
-(
-.
-∗
-?
-)
-(.∗?);\spos=(\d+);\ssms_row_insert
-.
-∗
-?
-(
-\d
-+
-)
-.∗?(\d+)', html_text, flags=re.S):
-arr_str, pos, line = m.groups()
-line = int(line)
-msgs = re.findall(r'"([^"]*)"', arr_str)
-for raw in msgs:
-raw = raw.strip()
-if not raw:
-continue
-parts = raw.split(",", 2)
-if len(parts) < 3:
-continue
-date, num, content = parts
-results.append({
-"line": line,
-"date": date.strip(),
-"num": num.strip(),
-"content": content.strip()
-})
-return results
+    results=[]
+    # sms=[ ... ]; pos=..; sms_row_insert(..., line)
+    for m in re.finditer(r'sms=\s*\[(.*?)\];\s*pos=(\d+);\s*sms_row_insert\(.*?(\d+)\)', html_text, flags=re.S):
+        arr_str, pos, line = m.groups()
+        line = int(line)
+        msgs = re.findall(r'"([^"]*)"', arr_str)
+        for raw in msgs:
+            raw = raw.strip()
+            if not raw:
+                continue
+            parts = raw.split(",", 2)  # date, num, content
+            if len(parts) < 3:
+                continue
+            date, num, content = parts
+            results.append({
+                "line": line,
+                "date": date.strip(),
+                "num":  num.strip(),
+                "content": content.strip()
+            })
+    return results
 
-=============== HELPERS ===============
-
+# =============== HELPERS ===============
 def _norm(s: str) -> str:
-# küçük farkları normalize et (boşluk/CRLF vs.)
-s = s.replace("\r", "").strip()
-s = re.sub(r"\s+", " ", s)
-return s
+    s = s.replace("\r", "").strip()
+    s = re.sub(r"\s+", " ", s)
+    return s
 
 def make_key(row) -> str:
-return f"{row['line']}::{_norm(row.get('date',''))}::{_norm(row.get('num',''))}::{_norm(row.get('content',''))}"
+    return f"{row['line']}::{_norm(row.get('date',''))}::{_norm(row.get('num',''))}::{_norm(row.get('content',''))}"
 
 def initial_warmup_seen(seen:set):
-"""
-BOT AÇILDIĞINDA: mevcut inbox'taki tüm kayıtları 'seen' yap
-böylece hiçbir eski SMS Telegram'a gönderilmez.
-"""
-html_txt = fetch_html()
-if not html_txt:
-log.info("Warm-up: HTML boş geldi, yine de devam.")
-return
-rows = parse_sms_blocks(html_txt)
-added = 0
-for row in rows:
-key = make_key(row)
-if key not in seen:
-seen.add(key)
-added += 1
-if added:
-save_seen(seen)
-log.info("Warm-up tamam: %d kayıt seen olarak işaretlendi.", added)
+    """
+    BOT AÇILDIĞINDA: mevcut inbox'taki tüm kayıtları 'seen' yap
+    böylece hiçbir eski SMS Telegram'a gönderilmez.
+    """
+    html_txt = fetch_html()
+    if not html_txt:
+        log.info("Warm-up: HTML boş geldi, yine de devam.")
+        return
+    rows = parse_sms_blocks(html_txt)
+    added = 0
+    for row in rows:
+        key = make_key(row)
+        if key not in seen:
+            seen.add(key)
+            added += 1
+    if added:
+        save_seen(seen)
+    log.info("Warm-up tamam: %d kayıt seen olarak işaretlendi.", added)
 
-=============== KOMUTLAR ===============
-/whereami -> bulunduğun chat id
-/numaraver L1-L5 -> örnek: "L1-L5" ya da "L1 L5" ya da "1,5" => bu gruba sadece belirtilen hatlar gönderilsin
-
+# =============== KOMUTLAR ===============
+# /whereami  -> bulunduğun chat id
+# /numaraver L1-L5 -> örnek: "L1-L5" ya da "L1 L5" ya da "1,5"
 LINE_RE = re.compile(r'[lL]?(\d+)')
 
 def parse_line_spec(spec:str):
-# "L1-L5" veya "1 5" veya "L1, L5" → {1,5}
-nums = set(int(n) for n in LINE_RE.findall(spec))
-return sorted(nums)
+    nums = set(int(n) for n in LINE_RE.findall(spec))
+    return sorted(nums)
 
 def handle_command(cmd_text:str, chat_id:str, routes:dict):
-text = cmd_text.strip()
-low = text.lower().strip()
+    text = cmd_text.strip()
+    low = text.lower().strip()
 
-if low.startswith("/whereami"):
-    tg_send_message(chat_id, f"🧭 <b>whereami</b>\n<code>{chat_id}</code>")
-    return routes
+    if low.startswith("/whereami"):
+        tg_send_message(chat_id, f"🧭 <b>whereami</b>\n<code>{chat_id}</code>")
+        return routes
 
-if low.startswith("/numaraver"):
-    parts = text.split(None, 1)
-    if len(parts) == 1:
+    if low.startswith("/numaraver"):
+        parts = text.split(None, 1)
+        if len(parts) == 1:
+            tg_send_message(chat_id,
+                "Kullanım: <code>/numaraver L1-L5</code> veya <code>/numaraver 1 5</code>\n"
+                "Örnek: <code>/numaraver L1 L5 L7</code>",
+            )
+            return routes
+        spec = parts[1].strip()
+        lines = parse_line_spec(spec)
+        if not lines:
+            tg_send_message(chat_id, "Hatalı format. Örnek: <code>/numaraver L1 L5</code>")
+            return routes
+        routes[str(chat_id)] = lines
+        save_routes(routes)
+        tg_send_message(chat_id, f"✅ {', '.join('L'+str(x) for x in lines)}  BU GRUBA OPSİYONLANDI.")
+        return routes
+
+    if low.startswith("/"):
         tg_send_message(chat_id,
-            "Kullanım: <code>/numaraver L1-L5</code> veya <code>/numaraver 1 5</code>\n"
-            "Örnek: <code>/numaraver L1 L5 L7</code>",
+            "Komutlar:\n"
+            "• <code>/whereami</code> → bu grubun chat_id’si\n"
+            "• <code>/numaraver L1 L5 ...</code> → sadece seçili hatlar bu gruba düşer"
         )
-        return routes
-    spec = parts[1].strip()
-    lines = parse_line_spec(spec)
-    if not lines:
-        tg_send_message(chat_id, "Hatalı format. Örnek: <code>/numaraver L1 L5</code>")
-        return routes
-    routes[str(chat_id)] = lines
-    save_routes(routes)
-    # ✅ Burada istediğin mesaj
-    tg_send_message(chat_id, f"✅ {', '.join('L'+str(x) for x in lines)}  BU GRUBA OPSİYONLANDI.")
     return routes
-
-# bilinmeyen komutlara kısa yardım
-if low.startswith("/"):
-    tg_send_message(chat_id,
-        "Komutlar:\n"
-        "• <code>/whereami</code> → bu grubun chat_id’si\n"
-        "• <code>/numaraver L1 L5 ...</code> → sadece seçili hatlar bu gruba düşer"
-    )
-return routes
-
 
 def poll_and_handle_updates(routes:dict) -> dict:
-updates = tg_fetch_updates(timeout=10)
-if not updates:
-return routes
-for u in updates:
-msg = u.get("message") or u.get("channel_post")
-if not msg:
-continue
-chat = msg.get("chat") or {}
-chat_id = chat.get("id")
-if not chat_id:
-continue
-text = msg.get("text") or ""
-if not text:
-continue
-routes = handle_command(text, str(chat_id), routes)
-return routes
+    updates = tg_fetch_updates(timeout=10)
+    if not updates:
+        return routes
+    for u in updates:
+        msg = u.get("message") or u.get("channel_post")
+        if not msg:
+            continue
+        chat = msg.get("chat") or {}
+        chat_id = chat.get("id")
+        if not chat_id:
+            continue
+        text = msg.get("text") or ""
+        if not text:
+            continue
+        routes = handle_command(text, str(chat_id), routes)
+    return routes
 
-=============== ROUTING ===============
-
+# =============== ROUTING ===============
 def deliver_sms_to_routes(row, routes:dict):
-"""
-routes boşsa geriye uyumluluk için tek CHAT_ID'ye gönder.
-doluysa sadece ilgili hatı isteyen gruplara gönder.
-"""
-line = int(row['line'])
-sent_total = 0
+    """
+    routes boşsa geriye uyumluluk için tek CHAT_ID'ye gönder.
+    doluysa sadece ilgili hattı isteyen gruplara gönder.
+    """
+    line = int(row['line'])
+    sent_total = 0
 
-if not routes:
-    if send_tg_formatted(CHAT_ID, row['line'], row['num'], row['content'], row['date']):
-        sent_total += 1
+    if not routes:
+        if send_tg_formatted(CHAT_ID, row['line'], row['num'], row['content'], row['date']):
+            sent_total += 1
+        return sent_total
+
+    for chat_id, lines in routes.items():
+        try:
+            want = line in lines
+        except Exception:
+            want = False
+        if want:
+            ok = send_tg_formatted(chat_id, row['line'], row['num'], row['content'], row['date'])
+            if ok:
+                sent_total += 1
+            else:
+                time.sleep(0.3 + random.random()*0.5)
+                if send_tg_formatted(chat_id, row['line'], row['num'], row['content'], row['date']):
+                    sent_total += 1
     return sent_total
 
-for chat_id, lines in routes.items():
-    try:
-        want = line in lines
-    except Exception:
-        want = False
-    if want:
-        ok = send_tg_formatted(chat_id, row['line'], row['num'], row['content'], row['date'])
-        if ok:
-            sent_total += 1
-        else:
-            # küçük jitter ile tek deneme daha
-            time.sleep(0.3 + random.random()*0.5)
-            if send_tg_formatted(chat_id, row['line'], row['num'], row['content'], row['date']):
-                sent_total += 1
-return sent_total
-
-=============== MAIN LOOP ===============
-
+# =============== MAIN LOOP ===============
 def main():
-seen = load_seen()
-routes = load_routes()
-log.info("Başladı, görülen %d kayıt | aktif grup sayısı: %d", len(seen), len(routes))
+    seen = load_seen()
+    routes = load_routes()
+    log.info("Başladı, görülen %d kayıt | aktif grup sayısı: %d", len(seen), len(routes))
 
-# --- KRİTİK: İlk açılışta warm-up yap, eskiyi asla göndermiyoruz ---
-initial_warmup_seen(seen)
+    # --- KRİTİK: İlk açılışta warm-up yap, eskiyi asla göndermiyoruz ---
+    initial_warmup_seen(seen)
 
-while True:
-    try:
-        # 1) Komutları işle
-        routes = poll_and_handle_updates(routes)
+    while True:
+        try:
+            # 1) Komutları işle
+            routes = poll_and_handle_updates(routes)
 
-        # 2) GoIP oku
-        html_txt = fetch_html()
-        if not html_txt:
-            time.sleep(3)
-            continue
-
-        rows = parse_sms_blocks(html_txt)
-        newc = 0
-        routed = 0
-        for row in rows:
-            key = make_key(row)
-            if key in seen:
+            # 2) GoIP oku
+            html_txt = fetch_html()
+            if not html_txt:
+                time.sleep(3)
                 continue
 
-            # Sadece yeni gelenleri gönder → routing
-            sent = deliver_sms_to_routes(row, routes)
-            if sent > 0:
-                routed += sent
-            seen.add(key)
-            newc += 1
+            rows = parse_sms_blocks(html_txt)
+            newc = 0
+            routed = 0
+            for row in rows:
+                key = make_key(row)
+                if key in seen:
+                    continue
 
-        if newc:
-            save_seen(seen)
-            log.info("Yeni %d SMS kaydı işlendi | gönderim: %d", newc, routed)
+                sent = deliver_sms_to_routes(row, routes)
+                if sent > 0:
+                    routed += sent
+                seen.add(key)
+                newc += 1
 
-    except requests.exceptions.ReadTimeout:
-        log.warning("GoIP Read timeout — atlıyorum.")
-    except requests.exceptions.RequestException as e:
-        log.warning("Ağ hatası: %s", e)
-    except Exception as e:
-        log.warning("Hata: %s", e)
+            if newc:
+                save_seen(seen)
+                log.info("Yeni %d SMS kaydı işlendi | gönderim: %d", newc, routed)
 
-    time.sleep(POLL_INTERVAL)
+        except requests.exceptions.ReadTimeout:
+            log.warning("GoIP Read timeout — atlıyorum.")
+        except requests.exceptions.RequestException as e:
+            log.warning("Ağ hatası: %s", e)
+        except Exception as e:
+            log.warning("Hata: %s", e)
 
+        time.sleep(POLL_INTERVAL)
 
-if name=="main":
-main()
-
-
+if __name__ == "__main__":
+    main()
