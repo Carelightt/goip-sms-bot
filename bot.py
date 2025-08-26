@@ -148,7 +148,6 @@ def tg_fetch_updates(timeout=20):
     r = tg_api("getUpdates", {"timeout": timeout, "offset": UPD_OFFSET}, use_get=True, timeout=timeout+5)
     if not r:
         return []
-    # Webhook açıksa 409 gelebilir → temizle ve tekrar dene
     if r.status_code == 409:
         log.warning("getUpdates 409: webhook aktif. Silmeyi deniyorum…")
         tg_delete_webhook(drop=False)
@@ -225,7 +224,8 @@ def initial_warmup_seen(seen:set):
     log.info("Warm-up tamam: %d kayıt seen olarak işaretlendi.", added)
 
 # =============== KOMUTLAR ===============
-CMD_RE  = re.compile(r'^/([a-zA-Z_]+)(?:@\w+)?(?:\s+(.*))?$')
+# Komut adı için Unicode destekli regex: /komut[@Bot]? [arg...]
+CMD_RE  = re.compile(r'^/([^\s@]+)(?:@\w+)?(?:\s+(.*))?$')
 LINE_RE = re.compile(r'[lL]?(\d+)')
 
 def parse_line_spec(spec:str):
@@ -266,7 +266,8 @@ def handle_command(text:str, chat_id:str, routes:dict):
         tg_send_message(chat_id, f"✅ {', '.join('L'+str(x) for x in routes[str(chat_id)])}  BU GRUBA OPSİYONLANDI 🔥")
         return routes
 
-    if cmd == "kaldır":
+    # /kaldır alias'ları: kaldır, kaldir, iptal, sil, remove
+    if cmd in {"kaldır", "kaldir", "iptal", "sil", "remove"}:
         if not arg:
             tg_send_message(chat_id,
                 "Kullanım: /kaldır L5 ... veya /kaldır 5 ...\nÖrn: /kaldır L2 L3"
@@ -306,7 +307,7 @@ def handle_command(text:str, chat_id:str, routes:dict):
         "Komutlar:\n"
         "• /whereami → chat_id gösterir\n"
         "• /numaraver L1 L5 ... → hatları ekle\n"
-        "• /kaldır L1 L5 ... → hatları çıkar\n"
+        "• /kaldır L1 L5 ... → hatları çıkar (alias: /kaldir, /iptal, /sil, /remove)\n"
         "• /aktif → aktif hatları listele"
     )
     return routes
