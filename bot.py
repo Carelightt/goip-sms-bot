@@ -55,8 +55,10 @@ SESSION = make_session()
 # ===== Kalıcı dosyalar =====
 def load_seen() -> set:
     if os.path.exists(SEEN_FILE):
-        try: return set(json.load(open(SEEN_FILE, "r", encoding="utf-8")))
-        except: return set()
+        try:
+            return set(json.load(open(SEEN_FILE, "r", encoding="utf-8")))
+        except:
+            return set()
     return set()
 
 def save_seen(seen:set):
@@ -64,8 +66,10 @@ def save_seen(seen:set):
 
 def load_subs() -> dict:
     if os.path.exists(SUB_FILE):
-        try: return json.load(open(SUB_FILE, "r", encoding="utf-8")))
-        except: return {}
+        try:
+            return json.load(open(SUB_FILE, "r", encoding="utf-8"))
+        except:
+            return {}
     return {}
 
 def save_subs(subs:dict):
@@ -73,8 +77,10 @@ def save_subs(subs:dict):
 
 def load_offset() -> int:
     if os.path.exists(UPD_FILE):
-        try: return int(open(UPD_FILE, "r", encoding="utf-8").read().strip() or "0")
-        except: return 0
+        try:
+            return int(open(UPD_FILE, "r", encoding="utf-8").read().strip() or "0")
+        except:
+            return 0
     return 0
 
 def save_offset(offset:int):
@@ -100,7 +106,12 @@ def parse_sms_blocks(html_text:str):
             parts = raw.split(",", 2)
             if len(parts) < 3: continue
             date, num, content = parts
-            results.append({"line": line,"date": date.strip(),"num": (num or "").strip(),"content": (content or "").strip()})
+            results.append({
+                "line": line,
+                "date": date.strip(),
+                "num": (num or "").strip(),
+                "content": (content or "").strip()
+            })
     return results
 
 # ===== Normalize & fingerprint =====
@@ -146,11 +157,16 @@ API = f"https://api.telegram.org/bot{BOT_TOKEN}"
 def tg_send_message(chat_id, text, parse_mode="HTML"):
     try:
         r = requests.post(f"{API}/sendMessage",
-                          data={"chat_id": str(chat_id),"text": text,"parse_mode": parse_mode,"disable_web_page_preview": True},
+                          data={"chat_id": str(chat_id),
+                                "text": text,
+                                "parse_mode": parse_mode,
+                                "disable_web_page_preview": True},
                           timeout=15)
-        if r.status_code != 200: log.warning("Telegram hata: %s %s", r.status_code, r.text[:200])
+        if r.status_code != 200:
+            log.warning("Telegram hata: %s %s", r.status_code, r.text[:200])
         return r
-    except Exception as e: log.warning("Telegram gönderim hatası: %s", e)
+    except Exception as e:
+        log.warning("Telegram gönderim hatası: %s", e)
 
 def format_sms(line, num, content, date):
     txt = (f"📩 <b>Yeni SMS</b>\n"
@@ -211,7 +227,7 @@ def poll_updates_and_handle(subs:dict,last_offset:int)->int:
         if from_id!=ADMIN_ID: tg_send_message(chat_id,"⛔ Yetkin yok."); continue
         cmd=text.lower().split()[0]
         args=" ".join(text.split()[1:]) if len(text.split())>1 else ""
-        if cmd in ("/numaraver","/numara_ver","/numara"): 
+        if cmd in ("/numaraver","/numara_ver","/numara"):
             if cmd=="/numara" and args.lower().startswith("ver"): args=args[3:].strip()
             if not args: tg_send_message(chat_id,"Kullanım: /numaraver L1-L5"); continue
             wanted=parse_lines_arg(args)
