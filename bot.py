@@ -140,6 +140,35 @@ def send_tg_formatted(chat_id, line, num, content, date):
     )
     return tg_send_message(chat_id, text)
 
+# ---- Long-polling updates ----
+UPD_OFFSET = 0
+
+def tg_fetch_updates(timeout=20):
+    global UPD_OFFSET
+    r = tg_api("getUpdates", {"timeout": timeout, "offset": UPD_OFFSET}, use_get=True, timeout=timeout+5)
+    if not r:
+        return []
+    # Webhook açıksa 409 gelebilir → temizle ve tekrar dene
+    if r.status_code == 409:
+        log.warning("getUpdates 409: webhook aktif. Silmeyi deniyorum…")
+        tg_delete_webhook(drop=False)
+        r = tg_api("getUpdates", {"timeout": timeout, "offset": UPD_OFFSET}, use_get=True, timeout=timeout+5)
+        if not r or r.status_code != 200:
+            if r:
+                log.warning("getUpdates retry status=%s %s", r.status_code, r.text[:200])
+            return []
+    if r.status_code != 200:
+        log.warning("getUpdates status: %s %s", r.status_code, r.text[:200])
+        return []
+    data = r.json()
+    if not data.get("ok"):
+        log.warning("getUpdates ok=false: %s", data)
+        return []
+    results = data.get("result", [])
+    if results:
+        UPD_OFFSET = results[-1]["update_id"] + 1
+    return results
+
 # =============== GOIP ===============
 def fetch_html():
     r = SESSION.get(GOIP_URL, timeout=(3, 6))
@@ -196,8 +225,15 @@ def initial_warmup_seen(seen:set):
     log.info("Warm-up tamam: %d kayıt seen olarak işaretlendi.", added)
 
 # =============== KOMUTLAR ===============
+CMD_RE  = re.compile(r'^/([a-zA-Z_]+)(?:@\w+)?(?:\s+(.*))?$')
+LINE_RE = re.compile(r'[lL]?(\d+)')
+
+def parse_line_spec(spec:str):
+    nums = set(int(n) for n in LINE_RE.findall(spec or ""))
+    return sorted(nums)
+
 def handle_command(text:str, chat_id:str, routes:dict):
-    m = re.match(r'^/([a-zA-Z_]+)(?:@\w+)?(?:\s+(.*))?$', text.strip())
+    m = CMD_RE.match(text.strip())
     if not m:
         return routes
     cmd, arg = m.groups()
@@ -273,6 +309,24 @@ def handle_command(text:str, chat_id:str, routes:dict):
         "• /kaldır L1 L5 ... → hatları çıkar\n"
         "• /aktif → aktif hatları listele"
     )
+    return routes
+
+def poll_and_handle_updates(routes:dict) -> dict:
+    updates = tg_fetch_updates(timeout=10)
+    if not updates:
+        return routes
+    for u in updates:
+        msg = u.get("message") or u.get("channel_post")
+        if not msg:
+            continue
+        chat = msg.get("chat") or {}
+        chat_id = chat.get("id")
+        if not chat_id:
+            continue
+        text = msg.get("text") or ""
+        if not text:
+            continue
+        routes = handle_command(text, str(chat_id), routes)
     return routes
 
 # =============== ROUTING ===============
