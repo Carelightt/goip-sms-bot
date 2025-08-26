@@ -14,7 +14,7 @@ CHAT_ID   = -1002951199599  # (GERİYE UYUMLULUK) routes.json boşsa buraya gön
 
 POLL_INTERVAL = 10
 
-# Dosyaları script klasörüne sabitle
+# Dosya yolları
 BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
 SEEN_FILE   = os.path.join(BASE_DIR, "seen.json")
 ROUTES_FILE = os.path.join(BASE_DIR, "routes.json")  # { "<chat_id>": [1,5,7], ... }
@@ -54,7 +54,6 @@ def load_seen():
     return set()
 
 def _atomic_write(path: str, data_text: str):
-    # tmp dosyayı hedefle aynı klasörde aç → cross-device hatası olmaz
     d = os.path.dirname(os.path.abspath(path)) or "."
     fd, tmp_path = tempfile.mkstemp(prefix=".tmp_", suffix=".json", dir=d)
     with os.fdopen(fd, "w", encoding="utf-8") as f:
@@ -65,7 +64,7 @@ def _atomic_write(path: str, data_text: str):
         except:
             pass
     try:
-        os.replace(tmp_path, path)   # aynı FS → atomik
+        os.replace(tmp_path, path)
     except OSError:
         shutil.move(tmp_path, path)
 
@@ -133,41 +132,13 @@ def tg_send_message(chat_id, text, parse_mode="HTML", disable_web_page_preview=T
 
 def send_tg_formatted(chat_id, line, num, content, date):
     text = (
-        f"📩 <b>Yeni SMS</b>\n"
+        f"📲 <b>Yeni SMS</b>\n"
         f"🧵 Line: <code>{line}</code>\n"
         f"👤 Gönderen: <code>{html.escape(num)}</code>\n"
         f"🕒 {html.escape(date)}\n"
         f"💬 <code>{html.escape(content)}</code>"
     )
     return tg_send_message(chat_id, text)
-
-# Basit long-polling updates
-UPD_OFFSET = 0
-
-def tg_fetch_updates(timeout=20):
-    global UPD_OFFSET
-    r = tg_api("getUpdates", {"timeout": timeout, "offset": UPD_OFFSET}, use_get=True, timeout=timeout+5)
-    if not r:
-        return []
-    # Webhook açıksa 409 gelebilir → temizle ve tekrar dene
-    if r.status_code == 409:
-        log.warning("getUpdates 409: webhook aktif. Silmeyi deniyorum…")
-        tg_delete_webhook(drop=False)
-        r = tg_api("getUpdates", {"timeout": timeout, "offset": UPD_OFFSET}, use_get=True, timeout=timeout+5)
-        if not r or r.status_code != 200:
-            if r: log.warning("getUpdates retry status=%s %s", r.status_code, r.text[:200])
-            return []
-    if r.status_code != 200:
-        log.warning("getUpdates status: %s %s", r.status_code, r.text[:200])
-        return []
-    data = r.json()
-    if not data.get("ok"):
-        log.warning("getUpdates ok=false: %s", data)
-        return []
-    results = data.get("result", [])
-    if results:
-        UPD_OFFSET = results[-1]["update_id"] + 1
-    return results
 
 # =============== GOIP ===============
 def fetch_html():
@@ -179,7 +150,6 @@ def fetch_html():
 
 def parse_sms_blocks(html_text:str):
     results=[]
-    # sms=[ ... ]; pos=..; sms_row_insert(..., line)
     for m in re.finditer(r'sms=\s*\[(.*?)\];\s*pos=(\d+);\s*sms_row_insert\(.*?(\d+)\)', html_text, flags=re.S):
         arr_str, pos, line = m.groups()
         line = int(line)
@@ -210,10 +180,6 @@ def make_key(row) -> str:
     return f"{row['line']}::{_norm(row.get('date',''))}::{_norm(row.get('num',''))}::{_norm(row.get('content',''))}"
 
 def initial_warmup_seen(seen:set):
-    """
-    BOT AÇILDIĞINDA: mevcut inbox'taki tüm kayıtları 'seen' yap
-    böylece hiçbir eski SMS Telegram'a gönderilmez.
-    """
     html_txt = fetch_html()
     if not html_txt:
         log.info("Warm-up: HTML boş geldi, yine de devam.")
@@ -230,9 +196,7 @@ def initial_warmup_seen(seen:set):
     log.info("Warm-up tamam: %d kayıt seen olarak işaretlendi.", added)
 
 # =============== KOMUTLAR ===============
-# /whereami  -> bulunduğun chat id
-# /numaraver L1-L5 -> örnek: "L1-L5" ya da "L1 L5" ya da "1,5"
-CMD_RE  = re.compile(r'^/([a-zA-Z_]+)(?:@\w+)?(?:\s+(.*))?$')  # /komut@Bot argümanlar
+CMD_RE  = re.compile(r'^/([a-zA-Z_]+)(?:@\w+)?(?:\s+(.*))?$')
 LINE_RE = re.compile(r'[lL]?(\d+)')
 
 def parse_line_spec(spec:str):
@@ -247,11 +211,7 @@ def handle_command(text:str, chat_id:str, routes:dict):
     cmd = cmd.lower()
 
     if cmd == "start":
-        tg_send_message(chat_id,
-            "Selam! Komutlar:\n"
-            "• <code>/whereami</code>\n"
-            "• <code>/numaraver L1 L5 ...</code>  (örn: <code>/numaraver L1-L5</code>)"
-        )
+        tg_send_message(chat_id, ".")
         return routes
 
     if cmd == "whereami":
@@ -261,51 +221,63 @@ def handle_command(text:str, chat_id:str, routes:dict):
     if cmd == "numaraver":
         if not arg:
             tg_send_message(chat_id,
-                "Kullanım: <code>/numaraver L1-L5</code> veya <code>/numaraver 1 5</code>\n"
-                "Örnek: <code>/numaraver L1 L5 L7</code>",
+                "Kullanım: /numaraver L1 L5 ...\nÖrn: /numaraver L1 L5 L7"
             )
             return routes
         lines = parse_line_spec(arg)
         if not lines:
-            tg_send_message(chat_id, "Hatalı format. Örnek: <code>/numaraver L1 L5</code>")
+            tg_send_message(chat_id, "Hatalı format. Örn: /numaraver L2 L3")
             return routes
-        routes[str(chat_id)] = lines
+        routes.setdefault(str(chat_id), [])
+        for ln in lines:
+            if ln not in routes[str(chat_id)]:
+                routes[str(chat_id)].append(ln)
+        routes[str(chat_id)] = sorted(routes[str(chat_id)])
         save_routes(routes)
-        tg_send_message(chat_id, f"✅ {', '.join('L'+str(x) for x in lines)}  BU GRUBA OPSİYONLANDI.")
+        tg_send_message(chat_id, f"✅ {', '.join('L'+str(x) for x in routes[str(chat_id)])}  BU GRUBA OPSİYONLANDI 🔥")
         return routes
 
-    # Diğer tüm /komut'larda kısa yardım
+    if cmd == "kaldır":
+        if not arg:
+            tg_send_message(chat_id,
+                "Kullanım: /kaldır L5 ... veya /kaldır 5 ...\nÖrn: /kaldır L2 L3"
+            )
+            return routes
+        lines = parse_line_spec(arg)
+        if not lines:
+            tg_send_message(chat_id, "Hatalı format. Örn: /kaldır L2 L3")
+            return routes
+        current = set(routes.get(str(chat_id), []))
+        for ln in lines:
+            if ln in current:
+                current.remove(ln)
+        routes[str(chat_id)] = sorted(current)
+        save_routes(routes)
+        if current:
+            tg_send_message(chat_id, f"❌ Kaldırıldı. Kalan hatlar: <code>{', '.join('L'+str(x) for x in current)}</code>")
+        else:
+            tg_send_message(chat_id, "❌ Tüm hatlar kaldırıldı. Bu gruba artık SMS düşmeyecek.")
+        return routes
+
+    if cmd == "aktif":
+        lines = routes.get(str(chat_id))
+        if not lines:
+            tg_send_message(chat_id, "ℹ️ Bu gruba şu an hiç hat opsiyonlanmamış.")
+        else:
+            tg_send_message(chat_id, f"📜 Aktif Hatlar: <code>{', '.join('L'+str(x) for x in lines)}</code>")
+        return routes
+
     tg_send_message(chat_id,
         "Komutlar:\n"
-        "• <code>/whereami</code>\n"
-        "• <code>/numaraver L1 L5 ...</code>"
+        "• /whereami → chat_id gösterir\n"
+        "• /numaraver L1 L5 ... → hatları ekle\n"
+        "• /kaldır L1 L5 ... → hatları çıkar\n"
+        "• /aktif → aktif hatları listele"
     )
-    return routes
-
-def poll_and_handle_updates(routes:dict) -> dict:
-    updates = tg_fetch_updates(timeout=10)
-    if not updates:
-        return routes
-    for u in updates:
-        msg = u.get("message") or u.get("channel_post")
-        if not msg:
-            continue
-        chat = msg.get("chat") or {}
-        chat_id = chat.get("id")
-        if not chat_id:
-            continue
-        text = msg.get("text") or ""
-        if not text:
-            continue
-        routes = handle_command(text, str(chat_id), routes)
     return routes
 
 # =============== ROUTING ===============
 def deliver_sms_to_routes(row, routes:dict):
-    """
-    routes boşsa geriye uyumluluk için tek CHAT_ID'ye gönder.
-    doluysa sadece ilgili hattı isteyen gruplara gönder.
-    """
     line = int(row['line'])
     sent_total = 0
 
@@ -331,22 +303,18 @@ def deliver_sms_to_routes(row, routes:dict):
 
 # =============== MAIN LOOP ===============
 def main():
-    # Long-polling kullanacağımız için güvene al: webhook'u temizle
     tg_delete_webhook(drop=False)
 
     seen = load_seen()
     routes = load_routes()
     log.info("Başladı, görülen %d kayıt | aktif grup sayısı: %d", len(seen), len(routes))
 
-    # Eski kutuyu görmüş say
     initial_warmup_seen(seen)
 
     while True:
         try:
-            # 1) Komutları işle
             routes = poll_and_handle_updates(routes)
 
-            # 2) GoIP oku
             html_txt = fetch_html()
             if not html_txt:
                 time.sleep(3)
@@ -359,8 +327,6 @@ def main():
                 key = make_key(row)
                 if key in seen:
                     continue
-
-                # Sadece yeni gelenleri gönder → routing
                 sent = deliver_sms_to_routes(row, routes)
                 if sent > 0:
                     routed += sent
