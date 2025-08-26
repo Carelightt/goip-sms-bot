@@ -258,7 +258,8 @@ if low.startswith("/numaraver"):
         return routes
     routes[str(chat_id)] = lines
     save_routes(routes)
-    tg_send_message(chat_id, f"✅ Bu gruba yönlendirilecek hatlar: <code>{', '.join('L'+str(x) for x in lines)}</code>")
+    # ✅ Burada istediğin mesaj
+    tg_send_message(chat_id, f"✅ {', '.join('L'+str(x) for x in lines)}  BU GRUBA OPSİYONLANDI.")
     return routes
 
 # bilinmeyen komutlara kısa yardım
@@ -372,3 +373,4 @@ while True:
 
 if name=="main":
 main()
+
