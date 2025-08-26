@@ -85,24 +85,43 @@ def load_routes() -> dict:
 def save_routes(routes:dict):
     _atomic_write(ROUTES_FILE, json.dumps(routes, ensure_ascii=False, indent=2))
 
-# =============== TELEGRAM ===============
+# =============== TELEGRAM CORE ===============
+def tg_api(method, params=None, use_get=False, timeout=20):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/{method}"
+    try:
+        if use_get:
+            r = SESSION.get(url, params=params or {}, timeout=(3, timeout))
+        else:
+            r = SESSION.post(url, data=params or {}, timeout=(3, timeout))
+        return r
+    except requests.RequestException as e:
+        log.warning("TG %s network hata: %s", method, e)
+        return None
+
+def tg_delete_webhook(drop=False):
+    r = tg_api("deleteWebhook", {"drop_pending_updates": "true" if drop else "false"})
+    if r is None:
+        return False
+    if r.status_code == 200:
+        ok = r.json().get("ok", False)
+        log.info("deleteWebhook ok=%s", ok)
+        return ok
+    log.warning("deleteWebhook status=%s %s", r.status_code, r.text[:200])
+    return False
+
 def tg_send_message(chat_id, text, parse_mode="HTML", disable_web_page_preview=True):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    data = {
+    r = tg_api("sendMessage", {
         "chat_id": str(chat_id),
         "text": text,
         "parse_mode": parse_mode,
         "disable_web_page_preview": "true" if disable_web_page_preview else "false",
-    }
-    try:
-        r = SESSION.post(url, data=data, timeout=(3, 15))
-        if r.status_code != 200:
-            log.warning("Telegram hata: %s %s", r.status_code, r.text[:200])
-            return False
-        return True
-    except requests.RequestException as e:
-        log.warning("Telegram network hata: %s", e)
+    }, use_get=False, timeout=15)
+    if not r:
         return False
+    if r.status_code != 200:
+        log.warning("Telegram hata: %s %s", r.status_code, r.text[:200])
+        return False
+    return True
 
 def send_tg_formatted(chat_id, line, num, content, date):
     text = (
@@ -119,24 +138,28 @@ UPD_OFFSET = 0
 
 def tg_fetch_updates(timeout=20):
     global UPD_OFFSET
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
-    params = {"timeout": timeout, "offset": UPD_OFFSET}
-    try:
-        r = SESSION.get(url, params=params, timeout=(3, timeout+5))
-        if r.status_code != 200:
-            log.warning("getUpdates status: %s %s", r.status_code, r.text[:200])
-            return []
-        data = r.json()
-        if not data.get("ok"):
-            log.warning("getUpdates ok=false: %s", data)
-            return []
-        results = data.get("result", [])
-        if results:
-            UPD_OFFSET = results[-1]["update_id"] + 1
-        return results
-    except requests.RequestException as e:
-        log.warning("getUpdates network hata: %s", e)
+    r = tg_api("getUpdates", {"timeout": timeout, "offset": UPD_OFFSET}, use_get=True, timeout=timeout+5)
+    if not r:
         return []
+    # Webhook açıkken 409 döner → otomatik temizle ve bir kere daha dene
+    if r.status_code == 409:
+        log.warning("getUpdates 409: webhook aktif. Silmeyi deniyorum…")
+        tg_delete_webhook(drop=False)
+        r = tg_api("getUpdates", {"timeout": timeout, "offset": UPD_OFFSET}, use_get=True, timeout=timeout+5)
+        if not r or r.status_code != 200:
+            if r: log.warning("getUpdates retry status=%s %s", r.status_code, r.text[:200])
+            return []
+    if r.status_code != 200:
+        log.warning("getUpdates status: %s %s", r.status_code, r.text[:200])
+        return []
+    data = r.json()
+    if not data.get("ok"):
+        log.warning("getUpdates ok=false: %s", data)
+        return []
+    results = data.get("result", [])
+    if results:
+        UPD_OFFSET = results[-1]["update_id"] + 1
+    return results
 
 # =============== GOIP ===============
 def fetch_html():
@@ -201,30 +224,40 @@ def initial_warmup_seen(seen:set):
 # =============== KOMUTLAR ===============
 # /whereami  -> bulunduğun chat id
 # /numaraver L1-L5 -> örnek: "L1-L5" ya da "L1 L5" ya da "1,5"
+CMD_RE = re.compile(r'^/([a-zA-Z_]+)(?:@\w+)?(?:\s+(.*))?$')  # /komut@Bot argümanlar
 LINE_RE = re.compile(r'[lL]?(\d+)')
 
 def parse_line_spec(spec:str):
-    nums = set(int(n) for n in LINE_RE.findall(spec))
+    nums = set(int(n) for n in LINE_RE.findall(spec or ""))
     return sorted(nums)
 
-def handle_command(cmd_text:str, chat_id:str, routes:dict):
-    text = cmd_text.strip()
-    low = text.lower().strip()
+def handle_command(text:str, chat_id:str, routes:dict):
+    m = CMD_RE.match(text.strip())
+    if not m:
+        return routes
+    cmd, arg = m.groups()
+    cmd = cmd.lower()
 
-    if low.startswith("/whereami"):
+    if cmd == "start":
+        tg_send_message(chat_id,
+            "Selam! Komutlar:\n"
+            "• <code>/whereami</code>\n"
+            "• <code>/numaraver L1 L5 ...</code>  (örn: <code>/numaraver L1-L5</code>)"
+        )
+        return routes
+
+    if cmd == "whereami":
         tg_send_message(chat_id, f"🧭 <b>whereami</b>\n<code>{chat_id}</code>")
         return routes
 
-    if low.startswith("/numaraver"):
-        parts = text.split(None, 1)
-        if len(parts) == 1:
+    if cmd == "numaraver":
+        if not arg:
             tg_send_message(chat_id,
                 "Kullanım: <code>/numaraver L1-L5</code> veya <code>/numaraver 1 5</code>\n"
                 "Örnek: <code>/numaraver L1 L5 L7</code>",
             )
             return routes
-        spec = parts[1].strip()
-        lines = parse_line_spec(spec)
+        lines = parse_line_spec(arg)
         if not lines:
             tg_send_message(chat_id, "Hatalı format. Örnek: <code>/numaraver L1 L5</code>")
             return routes
@@ -233,12 +266,12 @@ def handle_command(cmd_text:str, chat_id:str, routes:dict):
         tg_send_message(chat_id, f"✅ {', '.join('L'+str(x) for x in lines)}  BU GRUBA OPSİYONLANDI.")
         return routes
 
-    if low.startswith("/"):
-        tg_send_message(chat_id,
-            "Komutlar:\n"
-            "• <code>/whereami</code> → bu grubun chat_id’si\n"
-            "• <code>/numaraver L1 L5 ...</code> → sadece seçili hatlar bu gruba düşer"
-        )
+    # Diğer tüm /komut'larda kısa yardım
+    tg_send_message(chat_id,
+        "Komutlar:\n"
+        "• <code>/whereami</code>\n"
+        "• <code>/numaraver L1 L5 ...</code>"
+    )
     return routes
 
 def poll_and_handle_updates(routes:dict) -> dict:
@@ -290,11 +323,14 @@ def deliver_sms_to_routes(row, routes:dict):
 
 # =============== MAIN LOOP ===============
 def main():
+    # Long-polling kullanacağımız için güvene al: webhook'u temizle
+    tg_delete_webhook(drop=False)
+
     seen = load_seen()
     routes = load_routes()
     log.info("Başladı, görülen %d kayıt | aktif grup sayısı: %d", len(seen), len(routes))
 
-    # --- KRİTİK: İlk açılışta warm-up yap, eskiyi asla göndermiyoruz ---
+    # Eski kutuyu görmüş say
     initial_warmup_seen(seen)
 
     while True:
@@ -315,7 +351,6 @@ def main():
                 key = make_key(row)
                 if key in seen:
                     continue
-
                 sent = deliver_sms_to_routes(row, routes)
                 if sent > 0:
                     routed += sent
