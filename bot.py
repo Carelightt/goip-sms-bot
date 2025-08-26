@@ -81,8 +81,7 @@ def load_routes() -> dict:
                     cid = str(int(k))
                 except Exception:
                     cid = str(k)
-                lines = sorted({int(x) for x in v if isinstance(x, (int, str)) and str(x).isdigit()})
-                fixed[cid] = lines
+                fixed[cid] = set(int(x) for x in v if str(x).isdigit())
             return fixed
         except Exception as e:
             log.warning("routes.json okunamadı: %s", e)
@@ -90,7 +89,8 @@ def load_routes() -> dict:
     return {}
 
 def save_routes(routes:dict):
-    _atomic_write(ROUTES_FILE, json.dumps(routes, ensure_ascii=False, indent=2))
+    serializable = {cid: sorted(list(v)) for cid, v in routes.items()}
+    _atomic_write(ROUTES_FILE, json.dumps(serializable, ensure_ascii=False, indent=2))
 
 # =============== TELEGRAM CORE ===============
 def tg_api(method, params=None, use_get=False, timeout=20):
@@ -224,8 +224,6 @@ def initial_warmup_seen(seen:set):
     log.info("Warm-up tamam: %d kayıt seen olarak işaretlendi.", added)
 
 # =============== KOMUTLAR ===============
-# Komut adı için Unicode destekli regex: /komut[@Bot]? [arg...]
-CMD_RE  = re.compile(r'^/([^\s@]+)(?:@\w+)?(?:\s+(.*))?$')
 LINE_RE = re.compile(r'[lL]?(\d+)')
 
 def parse_line_spec(spec:str):
@@ -233,7 +231,7 @@ def parse_line_spec(spec:str):
     return sorted(nums)
 
 def handle_command(text:str, chat_id:str, routes:dict):
-    m = CMD_RE.match(text.strip())
+    m = re.match(r'^/([^\s@]+)(?:@\w+)?(?:\s+(.*))?$', text.strip())
     if not m:
         return routes
     cmd, arg = m.groups()
@@ -257,25 +255,34 @@ def handle_command(text:str, chat_id:str, routes:dict):
         if not lines:
             tg_send_message(chat_id, "Hatalı format. Örn: /numaraver L2 L3")
             return routes
-        routes.setdefault(str(chat_id), [])
+        routes.setdefault(str(chat_id), set())
         for ln in lines:
-            if ln not in routes[str(chat_id)]:
-                routes[str(chat_id)].append(ln)
-        routes[str(chat_id)] = sorted(routes[str(chat_id)])
+            routes[str(chat_id)].add(ln)
         save_routes(routes)
-        tg_send_message(chat_id, f"✅ {', '.join('L'+str(x) for x in routes[str(chat_id)])}  BU GRUBA EKLENDİ.")
+        tg_send_message(chat_id, f"✅ {', '.join('L'+str(x) for x in sorted(routes[str(chat_id))])}  BU GRUBA EKLENDİ.")
         return routes
 
-    # /kaldır alias'ları: kaldır, kaldir, iptal, sil, remove
     if cmd in {"kaldır", "kaldir", "iptal", "sil", "remove"}:
         if not arg:
             tg_send_message(chat_id,
-                "Kullanım: /kaldır L5 ... veya /kaldır 5 ...\nÖrn: /kaldır L2 L3"
+                "Kullanım: /kaldır L5 ... veya /kaldır 5 ...\nÖrn: /kaldır L2 L3\n"
+                "• /kaldır hepsi → tüm hatları siler"
             )
             return routes
+
+        arg = arg.strip()
+        if arg.lower() in {"hepsi", "all"}:
+            if str(chat_id) in routes and routes[str(chat_id)]:
+                routes.pop(str(chat_id), None)
+                save_routes(routes)
+                tg_send_message(chat_id, "❌ Tüm Numaralar kaldırıldı. Bu gruba artık SMS düşmeyecek.")
+            else:
+                tg_send_message(chat_id, "ℹ️ Zaten hiç hat opsiyonlu değil.")
+            return routes
+
         lines = parse_line_spec(arg)
         if not lines:
-            tg_send_message(chat_id, "Hatalı format. Örn: /kaldır L2 L3")
+            tg_send_message(chat_id, "Hatalı format. Örn: /kaldır L2 L3 veya /kaldır hepsi")
             return routes
         current = set(routes.get(str(chat_id), []))
         removed_any = False
@@ -283,15 +290,18 @@ def handle_command(text:str, chat_id:str, routes:dict):
             if ln in current:
                 current.remove(ln)
                 removed_any = True
-        routes[str(chat_id)] = sorted(current)
+        if current:
+            routes[str(chat_id)] = current
+        else:
+            routes.pop(str(chat_id), None)
         save_routes(routes)
         if removed_any:
             if current:
-                tg_send_message(chat_id, f"❌ Kaldırıldı. Kalan Line'lar : <code>{', '.join('L'+str(x) for x in current)}</code>")
+                tg_send_message(chat_id, f"❌ Kaldırıldı. Kalan Line'lar : <code>{', '.join('L'+str(x) for x in sorted(current))}</code>")
             else:
                 tg_send_message(chat_id, "❌ Tüm Numaralar kaldırıldı. Bu gruba artık SMS düşmeyecek.")
         else:
-            tg_send_message(chat_id, "Belirttiğin hat(lar)  bu grupta yok.")
+            tg_send_message(chat_id, "Belirttiğin hat(lar) bu grupta yok.")
         return routes
 
     if cmd == "aktif":
@@ -299,61 +309,18 @@ def handle_command(text:str, chat_id:str, routes:dict):
         if not lines:
             tg_send_message(chat_id, "Bu gruba şu an hiç numara verilmemiş.")
         else:
-            tg_send_message(chat_id, f"Aktif Linelar: <code>{', '.join('L'+str(x) for x in lines)}</code>")
+            tg_send_message(chat_id, f"Aktif Linelar: <code>{', '.join('L'+str(x) for x in sorted(lines))}</code>")
         return routes
 
-    # bilinmeyen /komutlar için yardım
     tg_send_message(chat_id,
         "Komutlar:\n"
         "• /whereami → chat_id gösterir\n"
         "• /numaraver L1 L5 ... → hatları ekle\n"
         "• /kaldır L1 L5 ... → hatları çıkar (alias: /kaldir, /iptal, /sil, /remove)\n"
+        "• /kaldır hepsi → tüm hatları sıfırlar\n"
         "• /aktif → aktif hatları listele"
     )
     return routes
-
-def poll_and_handle_updates(routes:dict) -> dict:
-    updates = tg_fetch_updates(timeout=10)
-    if not updates:
-        return routes
-    for u in updates:
-        msg = u.get("message") or u.get("channel_post")
-        if not msg:
-            continue
-        chat = msg.get("chat") or {}
-        chat_id = chat.get("id")
-        if not chat_id:
-            continue
-        text = msg.get("text") or ""
-        if not text:
-            continue
-        routes = handle_command(text, str(chat_id), routes)
-    return routes
-
-# =============== ROUTING ===============
-def deliver_sms_to_routes(row, routes:dict):
-    line = int(row['line'])
-    sent_total = 0
-
-    if not routes:
-        if send_tg_formatted(CHAT_ID, row['line'], row['num'], row['content'], row['date']):
-            sent_total += 1
-        return sent_total
-
-    for chat_id, lines in routes.items():
-        try:
-            want = line in lines
-        except Exception:
-            want = False
-        if want:
-            ok = send_tg_formatted(chat_id, row['line'], row['num'], row['content'], row['date'])
-            if ok:
-                sent_total += 1
-            else:
-                time.sleep(0.3 + random.random()*0.5)
-                if send_tg_formatted(chat_id, row['line'], row['num'], row['content'], row['date']):
-                    sent_total += 1
-    return sent_total
 
 # =============== MAIN LOOP ===============
 def main():
@@ -402,5 +369,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
