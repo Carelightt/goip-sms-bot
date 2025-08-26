@@ -263,7 +263,7 @@ def handle_command(text:str, chat_id:str, routes:dict):
                 routes[str(chat_id)].append(ln)
         routes[str(chat_id)] = sorted(routes[str(chat_id)])
         save_routes(routes)
-        tg_send_message(chat_id, f"✅ {', '.join('L'+str(x) for x in routes[str(chat_id)])}  BU GRUBA OPSİYONLANDI 🔥")
+        tg_send_message(chat_id, f"✅ {', '.join('L'+str(x) for x in routes[str(chat_id)])}  BU GRUBA EKLENDİ.")
         return routes
 
     # /kaldır alias'ları: kaldır, kaldir, iptal, sil, remove
@@ -287,19 +287,19 @@ def handle_command(text:str, chat_id:str, routes:dict):
         save_routes(routes)
         if removed_any:
             if current:
-                tg_send_message(chat_id, f"❌ Kaldırıldı. Kalan hatlar: <code>{', '.join('L'+str(x) for x in current)}</code>")
+                tg_send_message(chat_id, f"❌ Kaldırıldı. Kalan Line'lar : <code>{', '.join('L'+str(x) for x in current)}</code>")
             else:
-                tg_send_message(chat_id, "❌ Tüm hatlar kaldırıldı. Bu gruba artık SMS düşmeyecek.")
+                tg_send_message(chat_id, "❌ Tüm Numaralar kaldırıldı. Bu gruba artık SMS düşmeyecek.")
         else:
-            tg_send_message(chat_id, "ℹ️ Belirttiğin hat(lar) zaten bu grupta yoktu.")
+            tg_send_message(chat_id, "Belirttiğin hat(lar)  bu grupta yok.")
         return routes
 
     if cmd == "aktif":
         lines = routes.get(str(chat_id))
         if not lines:
-            tg_send_message(chat_id, "ℹ️ Bu gruba şu an hiç hat opsiyonlanmamış.")
+            tg_send_message(chat_id, "Bu gruba şu an hiç numara verilmemiş.")
         else:
-            tg_send_message(chat_id, f"📜 Aktif Hatlar: <code>{', '.join('L'+str(x) for x in lines)}</code>")
+            tg_send_message(chat_id, f"Aktif Linelar: <code>{', '.join('L'+str(x) for x in lines)}</code>")
         return routes
 
     # bilinmeyen /komutlar için yardım
@@ -402,3 +402,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
