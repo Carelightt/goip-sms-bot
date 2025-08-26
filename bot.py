@@ -92,6 +92,22 @@ def save_routes(routes:dict):
     serializable = {cid: sorted(list(v)) for cid, v in routes.items()}
     _atomic_write(ROUTES_FILE, json.dumps(serializable, ensure_ascii=False, indent=2))
 
+def initial_warmup_seen(seen:set):
+    html_txt = fetch_html()
+    if not html_txt:
+        log.info("Warm-up: HTML boş geldi, yine de devam.")
+        return
+    rows = parse_sms_blocks(html_txt)
+    added = 0
+    for row in rows:
+        key = make_key(row)
+        if key not in seen:
+            seen.add(key)
+            added += 1
+    if added:
+        save_seen(seen)
+    log.info("Warm-up tamam: %d kayıt seen olarak işaretlendi.", added)
+
 # =============== TELEGRAM CORE ===============
 def tg_api(method, params=None, use_get=False, timeout=20):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/{method}"
@@ -252,7 +268,7 @@ def handle_command(text:str, chat_id:str, routes:dict):
                 save_routes(routes)
                 tg_send_message(chat_id, "❌ Tüm Numaralar kaldırıldı. Bu gruba artık SMS düşmeyecek.")
             else:
-                tg_send_message(chat_id, "ℹ️ Zaten hiç hat opsiyonlu değil.")
+                tg_send_message(chat_id, "Zaten hiç hat opsiyonlu değil.")
             return routes
 
         lines = parse_line_spec(arg)
