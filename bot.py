@@ -1,4 +1,4 @@
-# bot.py — GoIP SMS -> Telegram (spam filtresi + OTP modu + tekrar önleyici + preview kapalı)
+# bot.py — GoIP SMS -> Telegram (spam filtresi + OTP modu + tekrar önleyici + preview kapalı + esnek komut)
 
 import os, re, time, json, html, logging, threading, hashlib, requests
 from requests.auth import HTTPBasicAuth
@@ -11,17 +11,16 @@ GOIP_USER = "user"
 GOIP_PASS = "9090"
 
 BOT_TOKEN = "8468644425:AAGJq2zEJiOSvrox8uqMv1VePrD9VsnrmDs"
-ADMIN_ID  = 6672759317          # sadece sen
+ADMIN_ID  = 6672759317
 MAX_LINE  = 16
 
-POLL_INTERVAL = 10              # GoIP sorgu aralığı (sn)
-SEND_DELAY    = 0.3             # Flood yememek için her mesaj arası gecikme
+POLL_INTERVAL = 10
+SEND_DELAY    = 0.3
 SEEN_FILE     = "seen.json"
 SUB_FILE      = "subscriptions.json"
 UPD_FILE      = "updates.offset"
 
-# ---- SPAM / FİLTRE AYARLARI ----
-ONLY_OTP = False   # True yaparsan SADECE 4–8 haneli kod içeren SMS’ler geçer
+ONLY_OTP = False
 SPAM_KEYWORDS = {
     "t.me", "http://", "https://",
     "giftsbattle", "promo code", "promocode",
@@ -33,7 +32,7 @@ DUP_TTL_HOURS = 6
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
 log = logging.getLogger("goip-forwarder")
 
-# ===== HTTP Session (retry/backoff) =====
+# ===== HTTP Session =====
 def make_session() -> requests.Session:
     s = requests.Session()
     s.auth = HTTPBasicAuth(GOIP_USER, GOIP_PASS)
@@ -65,7 +64,7 @@ def save_seen(seen:set):
 
 def load_subs() -> dict:
     if os.path.exists(SUB_FILE):
-        try: return json.load(open(SUB_FILE, "r", encoding="utf-8"))
+        try: return json.load(open(SUB_FILE, "r", encoding="utf-8")))
         except: return {}
     return {}
 
@@ -97,18 +96,11 @@ def parse_sms_blocks(html_text:str):
         msgs = re.findall(r'"([^"]*)"', arr_str)
         for raw in msgs:
             raw = (raw or "").strip()
-            if not raw: 
-                continue
+            if not raw: continue
             parts = raw.split(",", 2)
-            if len(parts) < 3:
-                continue
+            if len(parts) < 3: continue
             date, num, content = parts
-            results.append({
-                "line": line,
-                "date": date.strip(),
-                "num": (num or "").strip(),
-                "content": (content or "").strip()
-            })
+            results.append({"line": line,"date": date.strip(),"num": (num or "").strip(),"content": (content or "").strip()})
     return results
 
 # ===== Normalize & fingerprint =====
@@ -125,223 +117,145 @@ def extract_code(msg: str):
     m = re.search(r'\b(\d{4,8})\b', msg or "")
     return m.group(1) if m else None
 
-# ===== Basit spam / filtre kontrolü =====
+# ===== Spam filtresi =====
 def is_spam_or_blocked(num: str, content: str) -> bool:
     text = f"{num} {content}".lower()
-    if any(k in text for k in SPAM_KEYWORDS):
-        return True
+    if any(k in text for k in SPAM_KEYWORDS): return True
     return False
 
 def should_forward(num: str, content: str) -> bool:
-    if is_spam_or_blocked(num, content):
-        return False
-    if ONLY_OTP:
-        return extract_code(content) is not None
+    if is_spam_or_blocked(num, content): return False
+    if ONLY_OTP: return extract_code(content) is not None
     return True
 
-# ===== Tekrarlı içerik önleme =====
+# ===== Tekrar önleme =====
 _recent_hashes = {}
-
 def content_hash(s: str) -> str:
     s = _norm(s.lower())
     s = re.sub(r'\d{2}:\d{2}:\d{2}', '<time>', s)
     return hashlib.sha256(s.encode('utf-8')).hexdigest()
-
 def duplicate_recent(content: str, ttl_hours: int = DUP_TTL_HOURS) -> bool:
     h = content_hash(content)
     now = time.time()
-    to_del = [k for k,v in _recent_hashes.items() if now-v > ttl_hours*3600]
-    for k in to_del: _recent_hashes.pop(k,None)
-    if h in _recent_hashes and now-_recent_hashes[h] < ttl_hours*3600:
-        return True
-    _recent_hashes[h] = now
-    return False
+    _recent_hashes.update({k:v for k,v in _recent_hashes.items() if now-v <= ttl_hours*3600})
+    if h in _recent_hashes and now-_recent_hashes[h] < ttl_hours*3600: return True
+    _recent_hashes[h] = now; return False
 
-# ===== Telegram util =====
+# ===== Telegram =====
 API = f"https://api.telegram.org/bot{BOT_TOKEN}"
-
 def tg_send_message(chat_id, text, parse_mode="HTML"):
     try:
         r = requests.post(f"{API}/sendMessage",
-                          data={
-                              "chat_id": str(chat_id),
-                              "text": text,
-                              "parse_mode": parse_mode,
-                              "disable_web_page_preview": True  # 👈 her mesajda preview kapalı
-                          },
+                          data={"chat_id": str(chat_id),"text": text,"parse_mode": parse_mode,"disable_web_page_preview": True},
                           timeout=15)
-        if r.status_code != 200:
-            log.warning("Telegram hata: %s %s", r.status_code, r.text[:200])
+        if r.status_code != 200: log.warning("Telegram hata: %s %s", r.status_code, r.text[:200])
         return r
-    except Exception as e:
-        log.warning("Telegram gönderim hatası: %s", e)
+    except Exception as e: log.warning("Telegram gönderim hatası: %s", e)
 
 def format_sms(line, num, content, date):
-    txt = (
-        f"📩 <b>Yeni SMS</b>\n"
-        f"🧵 <b>Line:</b> <code>{line}</code>\n"
-        f"👤 <b>Gönderen:</b> <code>{html.escape(num)}</code>\n"
-        f"🕒 {html.escape(date)}\n"
-        f"💬 <code>{html.escape(content)}</code>"
-    )
+    txt = (f"📩 <b>Yeni SMS</b>\n"
+           f"🧵 <b>Line:</b> <code>{line}</code>\n"
+           f"👤 <b>Gönderen:</b> <code>{html.escape(num)}</code>\n"
+           f"🕒 {html.escape(date)}\n"
+           f"💬 <code>{html.escape(content)}</code>")
     code = extract_code(content)
-    if code:
-        txt += f"\n\n🔢 <b>KOD:</b>\n<pre>{code}</pre>"
+    if code: txt += f"\n\n🔢 <b>KOD:</b>\n<pre>{code}</pre>"
     return txt
 
-# ===== Abonelik tabanlı gönderim =====
+# ===== Abonelik =====
 def send_to_subscribers(subs:dict, line:int, num:str, content:str, date:str):
     payload = format_sms(line, num, content, date)
     delivered = 0
     for chat_id, lines in subs.items():
-        try:
-            if line in lines:
-                tg_send_message(chat_id, payload)
-                delivered += 1
-                time.sleep(SEND_DELAY)
-        except Exception as e:
-            log.warning("Gönderim hatası chat %s: %s", chat_id, e)
+        if line in lines:
+            tg_send_message(chat_id, payload)
+            delivered += 1
+            time.sleep(SEND_DELAY)
     return delivered
 
-# ===== İlk açılış WARM-UP =====
 def initial_warmup_seen(seen:set):
     html = fetch_html()
-    if not html:
-        log.info("Warm-up: HTML boş geldi, yine de devam.")
-        return
-    rows = parse_sms_blocks(html)
-    added = 0
-    for row in rows:
-        key = make_key(row)
-        if key not in seen:
-            seen.add(key)
-            added += 1
-    if added:
-        save_seen(seen)
-    log.info("Warm-up tamam: %d kayıt seen olarak işaretlendi.", added)
+    if not html: return
+    for row in parse_sms_blocks(html):
+        seen.add(make_key(row))
+    save_seen(seen)
+    log.info("Warm-up tamam: seen=%d", len(seen))
 
-# ===== /numaraver komutu =====
 def parse_lines_arg(arg:str):
     arg = (arg or "").upper().replace(" ", "")
-    targets = set()
+    targets=set()
     for token in arg.split(","):
-        if not token: continue
         if "-" in token:
             a,b = token.split("-",1)
-            a = int(a.replace("L","")); b = int(b.replace("L",""))
-            for x in range(min(a,b), max(a,b)+1):
-                if 1 <= x <= MAX_LINE: targets.add(x)
-        else:
-            x = int(token.replace("L",""))
-            if 1 <= x <= MAX_LINE: targets.add(x)
+            a=int(a.replace("L","")); b=int(b.replace("L",""))
+            for x in range(min(a,b),max(a,b)+1):
+                if 1<=x<=MAX_LINE: targets.add(x)
+        elif token:
+            x=int(token.replace("L",""))
+            if 1<=x<=MAX_LINE: targets.add(x)
     return sorted(targets)
 
-def poll_updates_and_handle(subs:dict, last_offset:int) -> int:
+def poll_updates_and_handle(subs:dict,last_offset:int)->int:
     try:
-        r = requests.get(f"{API}/getUpdates", params={"timeout": 20, "offset": last_offset+1}, timeout=30)
-        data = r.json()
+        r=requests.get(f"{API}/getUpdates",params={"timeout":20,"offset":last_offset+1},timeout=30)
+        data=r.json()
     except Exception as e:
-        log.warning("getUpdates hatası: %s", e)
-        return last_offset
-
+        log.warning("getUpdates hatası: %s",e); return last_offset
     if not data.get("ok"): return last_offset
-
-    for upd in data.get("result", []):
-        last_offset = max(last_offset, upd.get("update_id", last_offset))
-        msg = upd.get("message") or upd.get("edited_message")
+    for upd in data.get("result",[]):
+        last_offset=max(last_offset,upd.get("update_id",last_offset))
+        msg=upd.get("message") or upd.get("edited_message")
         if not msg: continue
-
-        chat_id = str(msg["chat"]["id"])
-        from_id = msg["from"]["id"]
-        text    = (msg.get("text") or "").strip()
-
+        chat_id=str(msg["chat"]["id"]); from_id=msg["from"]["id"]; text=(msg.get("text") or "").strip()
         if not text.startswith("/"): continue
-        if from_id != ADMIN_ID:
-            tg_send_message(chat_id, "⛔ Bu komutu kullanma yetkin yok.")
-            continue
-
-        if text.startswith("/numaraver"):
-            parts = text.split(maxsplit=1)
-            if len(parts) == 1:
-                tg_send_message(chat_id, "Kullanım: <code>/numaraver L1-L5</code> veya <code>/numaraver L2,L4,L7</code>")
-                continue
-            wanted = parse_lines_arg(parts[1])
-            if not wanted:
-                tg_send_message(chat_id, "⚠️ Geçersiz line. Örn: <code>/numaraver L1-L5</code>")
-                continue
-            subs[chat_id] = wanted
-            save_subs(subs)
-            tg_send_message(chat_id, f"✅ Bu grup artık Line {wanted} aboneliğine sahip.")
-            continue
-
-        if text.startswith("/abonelik"):
-            current = subs.get(chat_id, [])
-            tg_send_message(chat_id, f"📌 Bu grubun abonelikleri: {current if current else 'Yok'}")
-            continue
-
+        if from_id!=ADMIN_ID: tg_send_message(chat_id,"⛔ Yetkin yok."); continue
+        cmd=text.lower().split()[0]
+        args=" ".join(text.split()[1:]) if len(text.split())>1 else ""
+        if cmd in ("/numaraver","/numara_ver","/numara"): 
+            if cmd=="/numara" and args.lower().startswith("ver"): args=args[3:].strip()
+            if not args: tg_send_message(chat_id,"Kullanım: /numaraver L1-L5"); continue
+            wanted=parse_lines_arg(args)
+            if not wanted: tg_send_message(chat_id,"⚠️ Geçersiz line."); continue
+            subs[chat_id]=wanted; save_subs(subs)
+            tg_send_message(chat_id,f"✅ Bu grup artık Line {wanted} aboneliğine sahip."); continue
+        if cmd=="/abonelik":
+            current=subs.get(chat_id,[])
+            tg_send_message(chat_id,f"📌 Abonelikler: {current if current else 'Yok'}")
     return last_offset
 
-# ===== Worker =====
 def run_worker():
-    seen = load_seen()
-    subs = load_subs()
-    offset = load_offset()
-
-    log.info("Başladı, görülen %d kayıt", len(seen))
+    seen=load_seen(); subs=load_subs(); offset=load_offset()
+    log.info("Başladı, görülen %d kayıt",len(seen))
     initial_warmup_seen(seen)
-
     while True:
         try:
-            offset = poll_updates_and_handle(subs, offset)
-            save_offset(offset)
-
-            html = fetch_html()
-            if not html:
-                time.sleep(3); continue
-
-            rows = parse_sms_blocks(html)
-            newc = 0
-            for row in rows:
-                key = make_key(row)
+            offset=poll_updates_and_handle(subs,offset); save_offset(offset)
+            html=fetch_html()
+            if not html: time.sleep(3); continue
+            newc=0
+            for row in parse_sms_blocks(html):
+                key=make_key(row)
                 if key in seen: continue
-
-                num = row['num']; content = row['content']
-
-                if not should_forward(num, content):
-                    seen.add(key); continue
-                if duplicate_recent(f"{num}||{content}"):
-                    seen.add(key); continue
-
-                delivered = send_to_subscribers(subs, row['line'], num, content, row['date'])
-                if delivered > 0: newc += 1
+                num=row['num']; content=row['content']
+                if not should_forward(num,content): seen.add(key); continue
+                if duplicate_recent(f"{num}||{content}"): seen.add(key); continue
+                if send_to_subscribers(subs,row['line'],num,content,row['date'])>0: newc+=1
                 seen.add(key)
-
-            if newc:
-                save_seen(seen)
-                log.info("Yeni %d SMS gönderildi", newc)
-
-        except requests.exceptions.ReadTimeout:
-            log.warning("GoIP Read timeout — atlıyorum.")
-        except requests.exceptions.RequestException as e:
-            log.warning("Ağ hatası: %s", e)
-        except Exception as e:
-            log.warning("Hata: %s", e)
-
+            if newc: save_seen(seen); log.info("Yeni %d SMS gönderildi",newc)
+        except Exception as e: log.warning("Loop hata: %s",e)
         time.sleep(POLL_INTERVAL)
 
-# ===== Web healthcheck =====
 def maybe_start_http():
-    port = os.environ.get("PORT")
-    if not port:
-        run_worker(); return
+    port=os.environ.get("PORT")
+    if not port: run_worker(); return
     from flask import Flask
-    app = Flask(__name__)
-    @app.get("/")
-    def home(): return "GoIP SMS forwarder çalışıyor.", 200
+    app=Flask(__name__)
+    @app.get("/") 
+    def home(): return "GoIP SMS forwarder çalışıyor.",200
     @app.get("/health")
-    def health(): return "ok", 200
-    t = threading.Thread(target=run_worker, daemon=True); t.start()
-    app.run(host="0.0.0.0", port=int(port))
+    def health(): return "ok",200
+    threading.Thread(target=run_worker,daemon=True).start()
+    app.run(host="0.0.0.0",port=int(port))
 
-if __name__ == "__main__":
+if __name__=="__main__":
     maybe_start_http()
