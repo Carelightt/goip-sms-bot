@@ -49,11 +49,11 @@ def load_seen():
     if os.path.exists(SEEN_FILE):
         try:
             return set(json.load(open(SEEN_FILE, "r", encoding="utf-8")))
-        except:
+        except Exception:
             return set()
     return set()
 
-def _atomic_write(path: str, data_text: str):
+def _atomic_write(path:str, data_text:str):
     d = os.path.dirname(os.path.abspath(path)) or "."
     fd, tmp_path = tempfile.mkstemp(prefix=".tmp_", suffix=".json", dir=d)
     with os.fdopen(fd, "w", encoding="utf-8") as f:
@@ -61,7 +61,7 @@ def _atomic_write(path: str, data_text: str):
         f.flush()
         try:
             os.fsync(f.fileno())
-        except:
+        except Exception:
             pass
     try:
         os.replace(tmp_path, path)
@@ -79,7 +79,7 @@ def load_routes() -> dict:
             for k, v in data.items():
                 try:
                     cid = str(int(k))
-                except:
+                except Exception:
                     cid = str(k)
                 lines = sorted({int(x) for x in v if isinstance(x, (int, str)) and str(x).isdigit()})
                 fixed[cid] = lines
@@ -196,15 +196,8 @@ def initial_warmup_seen(seen:set):
     log.info("Warm-up tamam: %d kayıt seen olarak işaretlendi.", added)
 
 # =============== KOMUTLAR ===============
-CMD_RE  = re.compile(r'^/([a-zA-Z_]+)(?:@\w+)?(?:\s+(.*))?$')
-LINE_RE = re.compile(r'[lL]?(\d+)')
-
-def parse_line_spec(spec:str):
-    nums = set(int(n) for n in LINE_RE.findall(spec or ""))
-    return sorted(nums)
-
 def handle_command(text:str, chat_id:str, routes:dict):
-    m = CMD_RE.match(text.strip())
+    m = re.match(r'^/([a-zA-Z_]+)(?:@\w+)?(?:\s+(.*))?$', text.strip())
     if not m:
         return routes
     cmd, arg = m.groups()
@@ -264,7 +257,6 @@ def handle_command(text:str, chat_id:str, routes:dict):
             tg_send_message(chat_id, "ℹ️ Belirttiğin hat(lar) zaten bu grupta yoktu.")
         return routes
 
-    # /aktif: bu grubun aktif hatları
     if cmd == "aktif":
         lines = routes.get(str(chat_id))
         if not lines:
@@ -273,7 +265,7 @@ def handle_command(text:str, chat_id:str, routes:dict):
             tg_send_message(chat_id, f"📜 Aktif Hatlar: <code>{', '.join('L'+str(x) for x in lines)}</code>")
         return routes
 
-    # Bilinmeyen komutlar
+    # bilinmeyen /komutlar için yardım
     tg_send_message(chat_id,
         "Komutlar:\n"
         "• /whereami → chat_id gösterir\n"
@@ -281,24 +273,6 @@ def handle_command(text:str, chat_id:str, routes:dict):
         "• /kaldır L1 L5 ... → hatları çıkar\n"
         "• /aktif → aktif hatları listele"
     )
-    return routes
-
-def poll_and_handle_updates(routes:dict) -> dict:
-    updates = tg_fetch_updates(timeout=10)
-    if not updates:
-        return routes
-    for u in updates:
-        msg = u.get("message") or u.get("channel_post")
-        if not msg:
-            continue
-        chat = msg.get("chat") or {}
-        chat_id = chat.get("id")
-        if not chat_id:
-            continue
-        text = msg.get("text") or ""
-        if not text:
-            continue
-        routes = handle_command(text, str(chat_id), routes)
     return routes
 
 # =============== ROUTING ===============
