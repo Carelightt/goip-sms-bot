@@ -133,7 +133,7 @@ def tg_send_message(chat_id, text, parse_mode="HTML", disable_web_page_preview=T
 def send_tg_formatted(chat_id, line, num, content, date):
     text = (
         f"📲 <b>Yeni SMS</b>\n"
-        f"🧵 Line: <code>{line}</code>\n"
+        f"🟢 Line: <code>{line}</code>\n"
         f"👤 Gönderen: <code>{html.escape(num)}</code>\n"
         f"🕒 {html.escape(date)}\n"
         f"💬 <code>{html.escape(content)}</code>"
@@ -402,4 +402,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
