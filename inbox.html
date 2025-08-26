@@ -1,0 +1,846 @@
+
+
+
+
+
+
+
+<html>
+  
+  
+
+  
+  
+    
+  
+
+  
+    
+    
+
+<head>
+<meta http-equiv="Cache-Control" content="no-cache">
+<meta http-equiv="Content-Language" content="en-us">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+
+<title>GoIP16</title>
+
+<link rel="stylesheet" type="text/css" href="/style/default.css?1">
+<style type="text/css">
+.visible{
+display:block;
+}
+</style>
+<script lang="javascript" src="/script/dynamic.js?2"></script>
+<script lang="javascript">
+var uptime_s="";
+if(uptime_s!="") uptime_s=parseInt(uptime_s);
+if (document.getElementById){
+
+	document.write('<style type="text/css">\n');
+	document.write('.invisible{display:none;}\n');
+	document.write('</style>\n');
+}
+
+function set_uptime(second)
+{
+	document.getElementById('uptime').innerHTML=[parseInt(second / 60 / 60), parseInt(second / 60 % 60), second % 60].join(":").replace(/\b(\d)\b/g, "0$1");
+}
+
+function set_current_time()
+{
+	var d=new Date(Date.parse(document.getElementById('time_text').innerHTML.slice(-19).replace(/-/g, "/")));
+	d.setSeconds(d.getSeconds()+1);
+
+	s = (d.getFullYear())+"-"+((d.getMonth()+1)<10?"0"+(d.getMonth()+1):(d.getMonth()+1))+"-"+(d.getDate()<10?"0"+d.getDate():d.getDate()) +" "
+	s += (d.getHours()<10?"0"+(d.getHours()):d.getHours()) + ":"
+	s += (d.getMinutes()<10?"0"+(d.getMinutes()):d.getMinutes()) + ":"
+	s += (d.getSeconds()<10?"0"+(d.getSeconds()):d.getSeconds())
+	document.getElementById('time_text').innerHTML = s;
+
+	if(uptime_s!="") set_uptime(++uptime_s)
+
+	setTimeout('set_current_time()', 1000)
+}
+setTimeout('set_current_time()', 1000)
+</script>
+</head>
+
+<body>
+<table id="mainframe" height="100%" cellSpacing="0" cellPadding="0" width="768" border="0">
+<tr>
+<td width="314" class="banner" height="124">
+<img height="134" src="/images/perse.jpg" width="312" border="0">
+		</td>
+		<td class="banner" height="124" valign="bottom" width="454">
+			<table cellSpacing="0" cellPadding="0" width="100%" height="100%"border="0">
+				<tr>
+					<td height="24" width="324">
+					</td>
+					<td width="95" align="right">
+						<a href="../zh_CN/status.html"><image height="20" width="60" border="0" src="/images/chs.gif"></a>&nbsp;&nbsp;<br><a href="logout.html" width="60"><span class="time_text">Logout</span></a>&nbsp;&nbsp;&nbsp;
+					</td>
+				</tr>
+				<tr>
+					<td height="100" valign="bottom">
+                                           
+						<span class="subtitle">GoIP16</span>
+                                           
+					</td>
+                                        <td valign="bottom" align="right" class="time_text">
+                                                <table cellspacing="0" cellpadding="0" border="0">
+                                                 <tr>
+                                                  <td class="time_text" >SN(Serial Number):</td>
+                                                  <td class="time_text">GOIP16E17TR12111167</td>
+                                                 </tr>
+                                                 <tr>
+                                                  <td class="time_text" >Firmware Version:&nbsp;&nbsp;</td>
+                                                  <td class="time_text">GST-1.01-73-1
+</td>
+                                                 </tr>
+                                                 <tr>
+                                                  <td class="time_text">Module Version:</td>
+                                                  <td class="time_text">G610_V0C.58.0D_T17</td>
+                                                 </tr>
+                                                 <tr>
+                                                  <td class="time_text">Uptime:</td>
+                                                  <td class="time_text" id="uptime"></td>
+                                                 </tr>
+                                                 <tr>
+                                                  <td class="time_text">Last Login Time:</td>
+                                                  <td class="time_text">2025-08-24 18:50:00</td>
+                                                 </tr>
+                                                 <tr>
+                                                  <td class="time_text">Current Time:</td>
+                                                  <td class="time_text" id="time_text">2025-08-24 19:06:30</td>
+                                                 </tr>
+                                                </table>
+                                        </td>
+				</tr>
+			</table>
+		</td>
+	</tr>
+	<tr>
+		<td colSpan="2">
+			<table height="100%" cellSpacing="0" cellPadding="0" width="100%" bgColor="#ffffff" border="0">
+				<tr>
+					<td vAlign="top" width="196" class="sidebar">
+<script lang="javascript">
+function confirm_reset()
+{
+	return window.confirm("Are you sure to reset to factory default?");
+}
+function confirm_reboot()
+{
+	return window.confirm("Are you sure to reboot the device?");
+}
+</script>
+<table cellSpacing="0" cellPadding="0" width="100%" border="0">
+	<tr>
+		<td colspan="2" align="left" height="15"></td>
+	</tr>
+	<tr>
+		<td width="20"></td>
+		<td align="left" height="40">
+			<a href="status.html"><div class="title5">Status</div></a></td>
+	</tr>
+	<tr>
+		<td width="20"></td>
+		<td align="left" height="40"><a href="config.html"><div class="title5">Configurations</div></a></td>
+	</tr>
+	<tr>
+		<td width="20"></td>
+		<td height="40"><div class="title4">Tools</div></td>
+	</tr>
+	<tr>
+		<td width="20"></td>
+		<td align="right" valign="top">
+			<table border="0" width="82%" cellspacing="0" cellpadding="0">
+				
+				<tr>
+					<td height="30"><a href="tools.html?type=password"><div class="title3" id="password">User Management</div></a></td>
+				</tr>
+				<tr>
+					<td height="30"><a href="tools.html?type=ussd"><div class="title3" id="ussd">Send USSD</div></a></td>
+				</tr>
+				<tr>
+					<td height="30"><a href="tools.html?type=sms"><div class="title3" id="sms">Send SMS</div></a></td>
+				</tr>
+				<tr>
+					<td height="30"><a href="tools.html?type=sms_inbox"><div class="title3" id="sms_inbox">SMS InBox</div></a></td>
+				</tr>
+				<tr>
+					<td height="30"><a href="tools.html?type=sms_outbox"><div class="title3" id="sms_outbox">SMS OutBox</div></a></td>
+				</tr>
+
+				<tr>
+					<td height="30"><a href="tools.html?type=channel"><div class="title3" id="channel">GSM Channel Control</div></a></td>
+				</tr>
+                                <tr>
+                                        <td height="30"><a href="tools.html?type=ping"><div class="title3" id="ping">Ping Test</div></a></td>
+                                </tr>
+                                <tr>
+                                        <td height="30"><a href="tools.html?type=dial"><div class="title3" id="dial">Dial Test</div></a></td>
+                                </tr>
+				
+				<tr>
+					<td height="30"><a href="tools.html?type=num"><div id="num" class="title3" id="num">Get Number</div></a></td>
+				</tr>
+
+				
+				
+				
+
+				<tr>
+					<td height="10"></td>
+				</tr>
+				
+				
+				
+				<tr>
+					<form action="reboot.html" method="post" onsubmit="return confirm_reboot()">
+						<td height="30"><div class="title3"><input type="submit" value="Reboot" class="savebutton"></div></td>
+					</form>
+				</tr>
+			</table>
+		</td>
+	</tr>
+</table>
+<script lang="javascript">
+	
+		document.getElementById('sms_inbox').className="title4";
+	
+</script>
+
+					</td>
+					<td width="828" vAlign="top" class="content">
+<table width="100%" cellpadding="0" cellspacing="0" border="0">
+	<tr>
+		<td>
+			
+			
+			
+			
+			
+			<div id="tools_page_5_div" style="padding:5px">
+
+  
+
+<script lang="javascript" src="/script/ajaxroutine.js"></script>
+
+<script lang="javascript">
+
+</script>
+<div>
+	<div>
+	<table border="0" cellpadding="0" cellspacing="0" width="100%">
+	<tr>
+		<td colspan="3" class="title2" height="25">SMS InBox</td>
+	</tr>
+
+	<tr>
+		<td colspan="3" class="text">
+             <table border="0" cellpadding="0" cellspacing="0" width="100%">
+                <tr>
+		<td class="text"><input type=radio name="line" value="1" onclick="toggle2('sms_store_tab', 16, 0)" checked>Line 1</td>
+                
+                <td class="text"><input type=radio name="line" value="2" onclick="toggle2('sms_store_tab', 16, 1)">Line 2</td>
+                
+                
+                <td class="text"><input type=radio name="line" value="3" onclick="toggle2('sms_store_tab', 16, 2)">Line 3</td>
+                
+                
+                <td class="text"><input type=radio name="line" value="4" onclick="toggle2('sms_store_tab', 16, 3)">Line 4</td>
+                
+                
+                <td class="text"><input type=radio name="line" value="5" onclick="toggle2('sms_store_tab', 16, 4)">Line 5</td>
+                
+                
+                <td class="text"><input type=radio name="line" value="6" onclick="toggle2('sms_store_tab', 16, 5)">Line 6</td>
+                
+                
+                <td class="text"><input type=radio name="line" value="7" onclick="toggle2('sms_store_tab', 16, 6)">Line 7</td>
+                
+                
+                <td class="text"><input type=radio name="line" value="8" onclick="toggle2('sms_store_tab', 16, 7)">Line 8</td>
+                
+                </tr>
+                <tr>
+                
+                <td class="text"><input type=radio name="line" value="9" onclick="toggle2('sms_store_tab', 16, 8)">Line 9</td>
+                
+                
+                <td class="text"><input type=radio name="line" value="10" onclick="toggle2('sms_store_tab', 16, 9)">Line 10</td>
+                
+                
+                <td class="text"><input type=radio name="line" value="11" onclick="toggle2('sms_store_tab', 16, 10)">Line 11</td>
+                
+                
+                <td class="text"><input type=radio name="line" value="12" onclick="toggle2('sms_store_tab', 16, 11)">Line 12</td>
+                
+                
+                <td class="text"><input type=radio name="line" value="13" onclick="toggle2('sms_store_tab', 16, 12)">Line 13</td>
+                
+                
+                <td class="text"><input type=radio name="line" value="14" onclick="toggle2('sms_store_tab', 16, 13)">Line 14</td>
+                
+                
+                <td class="text"><input type=radio name="line" value="15" onclick="toggle2('sms_store_tab', 16, 14)">Line 15</td>
+                
+                
+                <td class="text"><input type=radio name="line" value="16" onclick="toggle2('sms_store_tab', 16, 15)">Line 16</td>
+                
+                </tr>
+                <tr>
+                
+                
+                
+                
+                
+                
+                
+                
+                </tr>
+                <tr>
+                
+                
+                
+                
+                
+                
+                
+                
+                </tr>
+              </table>
+		</td>
+
+	</tr>
+
+	</table>
+	</div>
+
+        
+        <div id="sms_store_tab_0_div" class="visable">
+                <table border="1" name="l1_sms_store" id="l1_sms_store" cellpadding="0" cellspacing="0" width="100%">
+                        <tr>
+                                <td width="120" height="25" class="title1" align="center">Date</td>
+                                <td width="120" height="25" class="title1" align="center">Number</td>
+                                <td width="300" height="25" class="title1" align="center">Content</td>
+                                <td height="25" class="title1" align="center">Delete</td>
+                        </tr>
+
+                </table>
+                <table border="0" cellpadding="0" cellspacing="0" width="100" align="left" >
+                        <tr>
+                                <td width="50" height="25" class="title1" align="left"><input type="button" name="line1" class="button" value="Delete all messages" onclick="if(confirm('Sure to Delete?')) window.location.href='?action=del&type=sms_inbox&line=1&pos=-1'"></td></tr><tr>
+                                <td width="50" height="25" class="title1" align="left"><input type="button" name="line1" class="button" value="Clear all messages for all Lines" onclick="if(confirm('Sure to Delete?')) window.location.href='?action=del&type=sms_inbox&line=-1&pos=-1'"></td>
+
+                        </tr>
+
+                </table>
+        </div>
+        
+        
+        <div id="sms_store_tab_1_div" class="invisible">
+                <table border="1" name="l2_sms_store" id="l2_sms_store" cellpadding="0" cellspacing="0" width="100%">
+                        <tr>
+                                <td width="120" height="25" class="title1" align="center">Date</td>
+                                <td width="120" height="25" class="title1" align="center">Number</td>
+                                <td width="300" height="25" class="title1" align="center">Content</td>
+                                <td height="25" class="title1" align="center">Delete</td>
+                        </tr>
+
+                </table>
+                <table border="0" cellpadding="0" cellspacing="0" width="100" align="left" >
+                        <tr>
+                                <td width="50" height="25" class="title1" align="left"><input type="button" name="line2" class="button" value="Delete all messages" onclick="if(confirm('Sure to Delete?')) window.location.href='?action=del&type=sms_inbox&line=2&pos=-1'"></td></tr><tr>
+                                <td width="50" height="25" class="title1" align="left"><input type="button" name="line2" class="button" value="Clear all messages for all Lines" onclick="if(confirm('Sure to Delete?')) window.location.href='?action=del&type=sms_inbox&line=-1&pos=-1'"></td>
+
+                        </tr>
+
+                </table>
+        </div>
+        
+        
+        <div id="sms_store_tab_2_div" class="invisible">
+                <table border="1" name="l3_sms_store" id="l3_sms_store" cellpadding="0" cellspacing="0" width="100%">
+                        <tr>
+                                <td width="120" height="25" class="title1" align="center">Date</td>
+                                <td width="120" height="25" class="title1" align="center">Number</td>
+                                <td width="300" height="25" class="title1" align="center">Content</td>
+                                <td height="25" class="title1" align="center">Delete</td>
+                        </tr>
+
+                </table>
+                <table border="0" cellpadding="0" cellspacing="0" width="100" align="left" >
+                        <tr>
+                                <td width="50" height="25" class="title1" align="left"><input type="button" name="line3" class="button" value="Delete all messages" onclick="if(confirm('Sure to Delete?')) window.location.href='?action=del&type=sms_inbox&line=3&pos=-1'"></td></tr><tr>
+                                <td width="50" height="25" class="title1" align="left"><input type="button" name="line3" class="button" value="Clear all messages for all Lines" onclick="if(confirm('Sure to Delete?')) window.location.href='?action=del&type=sms_inbox&line=-1&pos=-1'"></td>
+
+                        </tr>
+
+                </table>
+        </div>
+        
+        
+        <div id="sms_store_tab_3_div" class="invisible">
+                <table border="1" name="l4_sms_store" id="l4_sms_store" cellpadding="0" cellspacing="0" width="100%">
+                        <tr>
+                                <td width="120" height="25" class="title1" align="center">Date</td>
+                                <td width="120" height="25" class="title1" align="center">Number</td>
+                                <td width="300" height="25" class="title1" align="center">Content</td>
+                                <td height="25" class="title1" align="center">Delete</td>
+                        </tr>
+
+                </table>
+                <table border="0" cellpadding="0" cellspacing="0" width="100" align="left" >
+                        <tr>
+                                <td width="50" height="25" class="title1" align="left"><input type="button" name="line4" class="button" value="Delete all messages" onclick="if(confirm('Sure to Delete?')) window.location.href='?action=del&type=sms_inbox&line=4&pos=-1'"></td></tr><tr>
+                                <td width="50" height="25" class="title1" align="left"><input type="button" name="line4" class="button" value="Clear all messages for all Lines" onclick="if(confirm('Sure to Delete?')) window.location.href='?action=del&type=sms_inbox&line=-1&pos=-1'"></td>
+
+                        </tr>
+
+                </table>
+        </div>
+        
+        
+        <div id="sms_store_tab_4_div" class="invisible">
+                <table border="1" name="l5_sms_store" id="l5_sms_store" cellpadding="0" cellspacing="0" width="100%">
+                        <tr>
+                                <td width="120" height="25" class="title1" align="center">Date</td>
+                                <td width="120" height="25" class="title1" align="center">Number</td>
+                                <td width="300" height="25" class="title1" align="center">Content</td>
+                                <td height="25" class="title1" align="center">Delete</td>
+                        </tr>
+
+                </table>
+                <table border="0" cellpadding="0" cellspacing="0" width="100" align="left" >
+                        <tr>
+                                <td width="50" height="25" class="title1" align="left"><input type="button" name="line5" class="button" value="Delete all messages" onclick="if(confirm('Sure to Delete?')) window.location.href='?action=del&type=sms_inbox&line=5&pos=-1'"></td></tr><tr>
+                                <td width="50" height="25" class="title1" align="left"><input type="button" name="line5" class="button" value="Clear all messages for all Lines" onclick="if(confirm('Sure to Delete?')) window.location.href='?action=del&type=sms_inbox&line=-1&pos=-1'"></td>
+
+                        </tr>
+
+                </table>
+        </div>
+        
+        
+        <div id="sms_store_tab_5_div" class="invisible">
+                <table border="1" name="l6_sms_store" id="l6_sms_store" cellpadding="0" cellspacing="0" width="100%">
+                        <tr>
+                                <td width="120" height="25" class="title1" align="center">Date</td>
+                                <td width="120" height="25" class="title1" align="center">Number</td>
+                                <td width="300" height="25" class="title1" align="center">Content</td>
+                                <td height="25" class="title1" align="center">Delete</td>
+                        </tr>
+
+                </table>
+                <table border="0" cellpadding="0" cellspacing="0" width="100" align="left" >
+                        <tr>
+                                <td width="50" height="25" class="title1" align="left"><input type="button" name="line6" class="button" value="Delete all messages" onclick="if(confirm('Sure to Delete?')) window.location.href='?action=del&type=sms_inbox&line=6&pos=-1'"></td></tr><tr>
+                                <td width="50" height="25" class="title1" align="left"><input type="button" name="line6" class="button" value="Clear all messages for all Lines" onclick="if(confirm('Sure to Delete?')) window.location.href='?action=del&type=sms_inbox&line=-1&pos=-1'"></td>
+
+                        </tr>
+
+                </table>
+        </div>
+        
+        
+        <div id="sms_store_tab_6_div" class="invisible">
+                <table border="1" name="l7_sms_store" id="l7_sms_store" cellpadding="0" cellspacing="0" width="100%">
+                        <tr>
+                                <td width="120" height="25" class="title1" align="center">Date</td>
+                                <td width="120" height="25" class="title1" align="center">Number</td>
+                                <td width="300" height="25" class="title1" align="center">Content</td>
+                                <td height="25" class="title1" align="center">Delete</td>
+                        </tr>
+
+                </table>
+                <table border="0" cellpadding="0" cellspacing="0" width="100" align="left" >
+                        <tr>
+                                <td width="50" height="25" class="title1" align="left"><input type="button" name="line7" class="button" value="Delete all messages" onclick="if(confirm('Sure to Delete?')) window.location.href='?action=del&type=sms_inbox&line=7&pos=-1'"></td></tr><tr>
+                                <td width="50" height="25" class="title1" align="left"><input type="button" name="line7" class="button" value="Clear all messages for all Lines" onclick="if(confirm('Sure to Delete?')) window.location.href='?action=del&type=sms_inbox&line=-1&pos=-1'"></td>
+
+                        </tr>
+
+                </table>
+        </div>
+        
+        
+        <div id="sms_store_tab_7_div" class="invisible">
+                <table border="1" name="l8_sms_store" id="l8_sms_store" cellpadding="0" cellspacing="0" width="100%">
+                        <tr>
+                                <td width="120" height="25" class="title1" align="center">Date</td>
+                                <td width="120" height="25" class="title1" align="center">Number</td>
+                                <td width="300" height="25" class="title1" align="center">Content</td>
+                                <td height="25" class="title1" align="center">Delete</td>
+                        </tr>
+
+                </table>
+                <table border="0" cellpadding="0" cellspacing="0" width="100" align="left" >
+                        <tr>
+                                <td width="50" height="25" class="title1" align="left"><input type="button" name="line8" class="button" value="Delete all messages" onclick="if(confirm('Sure to Delete?')) window.location.href='?action=del&type=sms_inbox&line=8&pos=-1'"></td></tr><tr>
+                                <td width="50" height="25" class="title1" align="left"><input type="button" name="line8" class="button" value="Clear all messages for all Lines" onclick="if(confirm('Sure to Delete?')) window.location.href='?action=del&type=sms_inbox&line=-1&pos=-1'"></td>
+
+                        </tr>
+
+                </table>
+        </div>
+        
+        
+        <div id="sms_store_tab_8_div" class="invisible">
+                <table border="1" name="l9_sms_store" id="l9_sms_store" cellpadding="0" cellspacing="0" width="100%">
+                        <tr>
+                                <td width="120" height="25" class="title1" align="center">Date</td>
+                                <td width="120" height="25" class="title1" align="center">Number</td>
+                                <td width="300" height="25" class="title1" align="center">Content</td>
+                                <td height="25" class="title1" align="center">Delete</td>
+                        </tr>
+
+                </table>
+                <table border="0" cellpadding="0" cellspacing="0" width="100" align="left" >
+                        <tr>
+                                <td width="50" height="25" class="title1" align="left"><input type="button" name="line9" class="button" value="Delete all messages" onclick="if(confirm('Sure to Delete?')) window.location.href='?action=del&type=sms_inbox&line=9&pos=-1'"></td></tr><tr>
+                                <td width="50" height="25" class="title1" align="left"><input type="button" name="line9" class="button" value="Clear all messages for all Lines" onclick="if(confirm('Sure to Delete?')) window.location.href='?action=del&type=sms_inbox&line=-1&pos=-1'"></td>
+
+                        </tr>
+
+                </table>
+        </div>
+        
+        
+        <div id="sms_store_tab_9_div" class="invisible">
+                <table border="1" name="l10_sms_store" id="l10_sms_store" cellpadding="0" cellspacing="0" width="100%">
+                        <tr>
+                                <td width="120" height="25" class="title1" align="center">Date</td>
+                                <td width="120" height="25" class="title1" align="center">Number</td>
+                                <td width="300" height="25" class="title1" align="center">Content</td>
+                                <td height="25" class="title1" align="center">Delete</td>
+                        </tr>
+
+                </table>
+                <table border="0" cellpadding="0" cellspacing="0" width="100" align="left" >
+                        <tr>
+                                <td width="50" height="25" class="title1" align="left"><input type="button" name="line10" class="button" value="Delete all messages" onclick="if(confirm('Sure to Delete?')) window.location.href='?action=del&type=sms_inbox&line=10&pos=-1'"></td></tr><tr>
+                                <td width="50" height="25" class="title1" align="left"><input type="button" name="line10" class="button" value="Clear all messages for all Lines" onclick="if(confirm('Sure to Delete?')) window.location.href='?action=del&type=sms_inbox&line=-1&pos=-1'"></td>
+
+                        </tr>
+
+                </table>
+        </div>
+        
+        
+        <div id="sms_store_tab_10_div" class="invisible">
+                <table border="1" name="l11_sms_store" id="l11_sms_store" cellpadding="0" cellspacing="0" width="100%">
+                        <tr>
+                                <td width="120" height="25" class="title1" align="center">Date</td>
+                                <td width="120" height="25" class="title1" align="center">Number</td>
+                                <td width="300" height="25" class="title1" align="center">Content</td>
+                                <td height="25" class="title1" align="center">Delete</td>
+                        </tr>
+
+                </table>
+                <table border="0" cellpadding="0" cellspacing="0" width="100" align="left" >
+                        <tr>
+                                <td width="50" height="25" class="title1" align="left"><input type="button" name="line11" class="button" value="Delete all messages" onclick="if(confirm('Sure to Delete?')) window.location.href='?action=del&type=sms_inbox&line=11&pos=-1'"></td></tr><tr>
+                                <td width="50" height="25" class="title1" align="left"><input type="button" name="line11" class="button" value="Clear all messages for all Lines" onclick="if(confirm('Sure to Delete?')) window.location.href='?action=del&type=sms_inbox&line=-1&pos=-1'"></td>
+
+                        </tr>
+
+                </table>
+        </div>
+        
+        
+        <div id="sms_store_tab_11_div" class="invisible">
+                <table border="1" name="l12_sms_store" id="l12_sms_store" cellpadding="0" cellspacing="0" width="100%">
+                        <tr>
+                                <td width="120" height="25" class="title1" align="center">Date</td>
+                                <td width="120" height="25" class="title1" align="center">Number</td>
+                                <td width="300" height="25" class="title1" align="center">Content</td>
+                                <td height="25" class="title1" align="center">Delete</td>
+                        </tr>
+
+                </table>
+                <table border="0" cellpadding="0" cellspacing="0" width="100" align="left" >
+                        <tr>
+                                <td width="50" height="25" class="title1" align="left"><input type="button" name="line12" class="button" value="Delete all messages" onclick="if(confirm('Sure to Delete?')) window.location.href='?action=del&type=sms_inbox&line=12&pos=-1'"></td></tr><tr>
+                                <td width="50" height="25" class="title1" align="left"><input type="button" name="line12" class="button" value="Clear all messages for all Lines" onclick="if(confirm('Sure to Delete?')) window.location.href='?action=del&type=sms_inbox&line=-1&pos=-1'"></td>
+
+                        </tr>
+
+                </table>
+        </div>
+        
+        
+        <div id="sms_store_tab_12_div" class="invisible">
+                <table border="1" name="l13_sms_store" id="l13_sms_store" cellpadding="0" cellspacing="0" width="100%">
+                        <tr>
+                                <td width="120" height="25" class="title1" align="center">Date</td>
+                                <td width="120" height="25" class="title1" align="center">Number</td>
+                                <td width="300" height="25" class="title1" align="center">Content</td>
+                                <td height="25" class="title1" align="center">Delete</td>
+                        </tr>
+
+                </table>
+                <table border="0" cellpadding="0" cellspacing="0" width="100" align="left" >
+                        <tr>
+                                <td width="50" height="25" class="title1" align="left"><input type="button" name="line13" class="button" value="Delete all messages" onclick="if(confirm('Sure to Delete?')) window.location.href='?action=del&type=sms_inbox&line=13&pos=-1'"></td></tr><tr>
+                                <td width="50" height="25" class="title1" align="left"><input type="button" name="line13" class="button" value="Clear all messages for all Lines" onclick="if(confirm('Sure to Delete?')) window.location.href='?action=del&type=sms_inbox&line=-1&pos=-1'"></td>
+
+                        </tr>
+
+                </table>
+        </div>
+        
+        
+        <div id="sms_store_tab_13_div" class="invisible">
+                <table border="1" name="l14_sms_store" id="l14_sms_store" cellpadding="0" cellspacing="0" width="100%">
+                        <tr>
+                                <td width="120" height="25" class="title1" align="center">Date</td>
+                                <td width="120" height="25" class="title1" align="center">Number</td>
+                                <td width="300" height="25" class="title1" align="center">Content</td>
+                                <td height="25" class="title1" align="center">Delete</td>
+                        </tr>
+
+                </table>
+                <table border="0" cellpadding="0" cellspacing="0" width="100" align="left" >
+                        <tr>
+                                <td width="50" height="25" class="title1" align="left"><input type="button" name="line14" class="button" value="Delete all messages" onclick="if(confirm('Sure to Delete?')) window.location.href='?action=del&type=sms_inbox&line=14&pos=-1'"></td></tr><tr>
+                                <td width="50" height="25" class="title1" align="left"><input type="button" name="line14" class="button" value="Clear all messages for all Lines" onclick="if(confirm('Sure to Delete?')) window.location.href='?action=del&type=sms_inbox&line=-1&pos=-1'"></td>
+
+                        </tr>
+
+                </table>
+        </div>
+        
+        
+        <div id="sms_store_tab_14_div" class="invisible">
+                <table border="1" name="l15_sms_store" id="l15_sms_store" cellpadding="0" cellspacing="0" width="100%">
+                        <tr>
+                                <td width="120" height="25" class="title1" align="center">Date</td>
+                                <td width="120" height="25" class="title1" align="center">Number</td>
+                                <td width="300" height="25" class="title1" align="center">Content</td>
+                                <td height="25" class="title1" align="center">Delete</td>
+                        </tr>
+
+                </table>
+                <table border="0" cellpadding="0" cellspacing="0" width="100" align="left" >
+                        <tr>
+                                <td width="50" height="25" class="title1" align="left"><input type="button" name="line15" class="button" value="Delete all messages" onclick="if(confirm('Sure to Delete?')) window.location.href='?action=del&type=sms_inbox&line=15&pos=-1'"></td></tr><tr>
+                                <td width="50" height="25" class="title1" align="left"><input type="button" name="line15" class="button" value="Clear all messages for all Lines" onclick="if(confirm('Sure to Delete?')) window.location.href='?action=del&type=sms_inbox&line=-1&pos=-1'"></td>
+
+                        </tr>
+
+                </table>
+        </div>
+        
+        
+        <div id="sms_store_tab_15_div" class="invisible">
+                <table border="1" name="l16_sms_store" id="l16_sms_store" cellpadding="0" cellspacing="0" width="100%">
+                        <tr>
+                                <td width="120" height="25" class="title1" align="center">Date</td>
+                                <td width="120" height="25" class="title1" align="center">Number</td>
+                                <td width="300" height="25" class="title1" align="center">Content</td>
+                                <td height="25" class="title1" align="center">Delete</td>
+                        </tr>
+
+                </table>
+                <table border="0" cellpadding="0" cellspacing="0" width="100" align="left" >
+                        <tr>
+                                <td width="50" height="25" class="title1" align="left"><input type="button" name="line16" class="button" value="Delete all messages" onclick="if(confirm('Sure to Delete?')) window.location.href='?action=del&type=sms_inbox&line=16&pos=-1'"></td></tr><tr>
+                                <td width="50" height="25" class="title1" align="left"><input type="button" name="line16" class="button" value="Clear all messages for all Lines" onclick="if(confirm('Sure to Delete?')) window.location.href='?action=del&type=sms_inbox&line=-1&pos=-1'"></td>
+
+                        </tr>
+
+                </table>
+        </div>
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+
+</div>
+<script language="javascript">
+
+function sms_row_insert(sms_store, sms, pos, line)
+{ 
+   for(var j=0;j<10;j++){
+        var row=sms_store.insertRow(sms_store.rows.length);
+        var col;
+        var sms_time, sms_num, sms_msg, posb, pose;
+        var sms_now = sms[pos];
+
+        posb=sms_now.indexOf(",");
+        if(posb == -1 ) {
+                if(--pos < 0) pos = 9;
+                continue;
+        }
+        sms_time=sms_now.slice(0, posb++ );
+
+        posn=sms_now.indexOf(",", posb);
+        if(posn == -1 ) {
+                if(--pos < 0) pos = 9;
+                continue;
+        }
+        sms_num=sms_now.slice(posb, posn++ );
+
+        sms_msg=sms_now.slice(posn);
+
+        col = row.insertCell(0);
+
+        col.innerHTML = sms_time;
+        col = row.insertCell(1);
+
+        col.innerHTML = sms_num;
+        col = row.insertCell(2);
+        col.innerHTML = sms_msg;
+
+        col = row.insertCell(3);
+
+	col.innerHTML = "<input type='button' name='delete_"+line+"_"+pos+"' class='button' value='Del' onclick='if(confirm(\"sure to delete?\")) window.location.href=\"?action=del&type=sms_inbox&line="+line+"&pos="+pos+"\"'>";
+
+        if(--pos < 0) pos = 9;
+   }
+}
+
+var sms;
+
+sms= ["08-24 17:51:16,PAROLAPARA,(1)E-mail adresini degistirmek icin tek kullanimlik dogrulama kodun: 242575\nLutfen bu kodu kimse ile paylasÃ@@@@@","08-24 17:51:16,PAROLAPARA,(2)@@","08-24 17:52:16,PAYCO,Tek kullanÄ±mlÄ±k OTP kodu: 342999 LÃ¼tfen bu k","","","08-24 17:53:17,PAYCO,Tek kullanÄ±mlÄ±k OTP kodu: 912206 LÃ¼tfen bu k","08-24 18:04:34,PAROLAPARA,OSMAN TATAR kullanicisina gondermis oldugun 30,00 TL basari ile iletildi.\n B002","","08-24 17:47:10,PAPEL,Papel giris sifreniz 922553. GUVENLIGINIZ ICIN  KIMSEYLE PAYLASMAYINIZ. B002","08-24 17:49:26,PAROLAPARA,Sifreni sifirlamak icin tek kullanimlik dogrulama kodun: 963240\nLutfen bu kodu kimseyle paylasma.\n B002"];
+pos=6;
+sms_row_insert(l1_sms_store, sms, pos, 1);
+
+
+sms= ["08-24 18:53:19,PAROLAPARA,(1)PAROLAPARA hesabina 524069 dogrulama kodu ile giris yapabilirsin. Guvenligin icin giris kodunu kimse ile paylasm","08-24 18:53:19,PAROLAPARA,(2)a.  Referanse kodu: Z3V8RC\n     B002","08-24 13:32:30,HAYATPAY,(1)Lutfen kimseyle paylasmayin, 695532 sifrenizle 24/08/2025 tarihli MONEYPAY ODEME  yaptiginiz 699.37 TL islemi tama","08-24 13:32:30,HAYATPAY,(2)mlayabilirsiniz. B002","08-24 13:32:55,HAYATPAY,(1)Merhaba, sonu 2595 ile biten kartindan 699.37 TRY tutarinda MONEYPAY/MIGROSONE       ISTANBUL     TR uzerinden isl","08-24 13:32:55,HAYATPAY,(2)em gerceklestirilmistir.  B002","08-24 14:27:27,MONEYPAY,Money iÃ§in tek seferlik Åifreniz: 265772 B002","08-24 14:34:38,Masterpass,868945 dogrulama kodu ile Masterpass hesabinizin telefon numarasini dogrulayabilirsiniz. B021","08-24 14:43:58,Masterpass,016759 dogrulama kodu ile Masterpass hesabinizin telefon numarasini dogrulayabilirsiniz. B021","08-24 14:57:49,Masterpass,207417 dogrulama kodu ile Masterpass hesabinizin telefon numarasini dogrulayabilirsiniz. B021"];
+pos=1;
+sms_row_insert(l2_sms_store, sms, pos, 2);
+
+
+sms= ["08-24 14:22:27,HAYATPAY,(1)Lutfen kimseyle paylasmayin, 914989 sifrenizle 24/08/2025 tarihli MONEYPAY ODEME  yaptiginiz 699.37 TL islemi tama","08-24 14:22:27,HAYATPAY,(2)mlayabilirsiniz. B002","08-24 14:22:50,HAYATPAY,(1)Merhaba, sonu 9289 ile biten kartindan 699.37 TRY tutarinda MONEYPAY/MIGROSONE       ISTANBUL     TR uzerinden isl","08-24 14:22:50,HAYATPAY,(2)em gerceklestirilmistir.  B002","08-24 14:19:18,iyzico,(2)019 B043","08-24 14:19:25,HAYATPAY,(1)Sonu 9289 ile biten kartina 551.47 TRY tutarinda IYZICO/yemeksepeti.com   ISTANBUL     TR uzerinden iade islemi ge","08-24 14:19:25,HAYATPAY,(2)rceklestirilmistir. B002","08-24 14:21:13,HAYATPAY,729260 dogrulama kodu ile MasterPass islemleriniz icin kartinizi kaydedebilirsiniz. B002","08-24 14:21:18,HAYATPAY,336454 dogrulama kodu ile MasterPass islemleriniz icin kartinizi kaydedebilirsiniz. B002","08-24 14:21:23,HAYATPAY,514386 dogrulama kodu ile MasterPass islemleriniz icin kartinizi kaydedebilirsiniz. B002"];
+pos=3;
+sms_row_insert(l3_sms_store, sms, pos, 3);
+
+
+sms= ["08-24 14:58:57,HAYATPAY,(1)Lutfen kimseyle paylasmayin, 187619 sifrenizle 24/08/2025 tarihli MONEYPAY ODEME  yaptiginiz 699.37 TL islemi tama","08-24 14:58:57,HAYATPAY,(2)mlayabilirsiniz. B002","08-24 14:59:18,HAYATPAY,(1)Merhaba, sonu 7486 ile biten kartindan 699.37 TRY tutarinda MONEYPAY/MIGROSONE       ISTANBUL     TR uzerinden isl","08-24 14:59:18,HAYATPAY,(2)em gerceklestirilmistir.  B002","08-24 14:54:49,iyzico,(2)zico.app.link/AWyfqyg0jvb B043","08-24 14:54:57,HAYATPAY,(1)Merhaba, sonu 7486 ile biten kartindan 551.47 TRY tutarinda IYZICO/yemeksepeti.com   ISTANBUL     TR uzerinden isl","08-24 14:54:57,HAYATPAY,(2)em gerceklestirilmistir.  B002","08-24 14:55:05,HAYATPAY,(1)Sonu 7486 ile biten kartina 551.47 TRY tutarinda IYZICO/yemeksepeti.com   ISTANBUL     TR uzerinden iade islemi ge","08-24 14:55:05,HAYATPAY,(2)rceklestirilmistir. B002","08-24 14:58:25,HAYATPAY,772443 dogrulama kodu ile MasterPass islemleriniz icin kartinizi kaydedebilirsiniz. B002"];
+pos=3;
+sms_row_insert(l4_sms_store, sms, pos, 4);
+
+
+sms= ["","","","","","","08-24 14:08:43,2214,Sim kart degisikligi isleminiz baslatilmistir.Islem tamamlandiktan sonra mevcut sim kartiniz gecersiz olacaktir. B002","","",""];
+pos=6;
+sms_row_insert(l5_sms_store, sms, pos, 5);
+
+
+sms= ["","","","","","","","","",""];
+pos=3;
+sms_row_insert(l6_sms_store, sms, pos, 6);
+
+
+sms= ["","","","","","","","","",""];
+pos=4;
+sms_row_insert(l7_sms_store, sms, pos, 7);
+
+
+sms= ["08-24 18:50:37,PAROLAPARA,(1)PAROLAPARA'e hos geldin! Dogrulama adimini tamamlayarak PAROLAPARA dunyasina tum ozellikleriyle adim atabilirsin","08-24 18:50:37,PAROLAPARA,(2).\n B002","08-24 15:10:07,TURKCELL,Sosyal aÃ§Ä±dan desteklenmesi gereken engellilere, harp ve vazife Åeh","","","","08-24 18:46:40,PAROLAPARA,(1)PAROLAPARA hesabina 339832 dogrulama kodu ile giris yapabilirsin. Guvenligin icin giris kodunu kimse ile paylasm","08-24 18:46:40,PAROLAPARA,(2)a.  Referanse kodu: GD59AT\n     B002","08-24 18:47:49,PAROLAPARA,(1)PAROLAPARA hesabina 230658 dogrulama kodu ile giris yapabilirsin. Guvenligin icin giris kodunu kimse ile paylasm","08-24 18:47:49,PAROLAPARA,(2)a.  Referanse kodu: M9GZNL\n     B002"];
+pos=1;
+sms_row_insert(l8_sms_store, sms, pos, 8);
+
+
+sms= ["","","08-24 18:55:07,Google,G-160941 is your Google verification code. B040","08-24 18:57:00,PAROLAPARA,(1)PAROLAPARA hesabina 209818 dogrulama kodu ile giris yapabilirsin. Guvenligin icin giris kodunu kimse ile paylasm","08-24 18:57:00,PAROLAPARA,(2)a.  Referanse kodu: 96ALVR\n     B002","","","","",""];
+pos=4;
+sms_row_insert(l9_sms_store, sms, pos, 9);
+
+
+sms= ["","","","","","","","08-24 14:35:37,Google,G-256953 is your Google verification code. B040","",""];
+pos=2;
+sms_row_insert(l10_sms_store, sms, pos, 10);
+
+
+sms= ["08-24 16:35:11,PAROLAPARA,Sifreni sifirlamak icin tek kullanimlik dogrulama kodun: 847046\nLutfen bu kodu kimseyle paylasma.\n B002","08-24 16:36:31,PAROLAPARA,(1)E-mail adresini degistirmek icin tek kullanimlik dogrulama kodun: 563962\nLutfen bu kodu kimse ile paylasma. B00","08-24 16:36:31,PAROLAPARA,(2)2","08-24 16:37:51,PAROLAPARA,LEYLA AYDEMIR kullanicisina gondermis oldugun 30,00 TL basari ile iletildi.\n B002","08-24 14:52:58,PAROLAPARA,(2)a.  Referanse kodu: EZSJPR\n     B002","08-24 15:16:34,PAROLAPARA,30.00 TRY tutarindaki bakiyen hesabina yuklendi.\n\n B002","08-24 15:40:09,PAROLAPARA,(1)PAROLAPARA hesabina 190891 dogrulama kodu ile giris yapabilirsin. Guvenligin icin giris kodunu kimse ile paylasm","08-24 15:40:09,PAROLAPARA,(2)a.  Referanse kodu: Y2D5HT\n     B002","08-24 16:31:08,PAROLAPARA,(1)PAROLAPARA hesabina 884306 dogrulama kodu ile giris yapabilirsin. Guvenligin icin giris kodunu kimse ile paylasm","08-24 16:31:08,PAROLAPARA,(2)a.  Referanse kodu: KBMSP1\n     B002"];
+pos=3;
+sms_row_insert(l11_sms_store, sms, pos, 11);
+
+
+sms= ["08-24 15:56:07,PAROLAPARA,(1)PAROLAPARA hesabina 239604 dogrulama kodu ile giris yapabilirsin. Guvenligin icin giris kodunu kimse ile paylasm","08-24 15:56:07,PAROLAPARA,(2)a.  Referanse kodu: L6DR80\n     B002","08-24 16:23:00,PAROLAPARA,(1)PAROLAPARA hesabina 420291 dogrulama kodu ile giris yapabilirsin. Guvenligin icin giris kodunu kimse ile paylasm","08-24 16:23:00,PAROLAPARA,(2)a.  Referanse kodu: 71A5ER\n     B002","08-24 16:28:54,PAROLAPARA,Sifreni sifirlamak icin tek kullanimlik dogrulama kodun: 438267\nLutfen bu kodu kimseyle paylasma.\n B002","08-24 16:29:59,PAROLAPARA,(1)E-mail adresini degistirmek icin tek kullanimlik dogrulama kodun: 671580\nLutfen bu kodu kimse ile paylasma. B00","08-24 16:29:59,PAROLAPARA,(2)2","08-24 16:31:03,PAROLAPARA,LEYLA AYDEMIR kullanicisina gondermis oldugun 30,00 TL basari ile iletildi.\n B002","08-24 15:42:23,PAROLAPARA,(1)PAROLAPARA hesabina 509148 dogrulama kodu ile giris yapabilirsin. Guvenligin icin giris kodunu kimse ile paylasm","08-24 15:42:23,PAROLAPARA,(2)a.  Referanse kodu: 9D7LHK\n     B002"];
+pos=7;
+sms_row_insert(l12_sms_store, sms, pos, 12);
+
+
+sms= ["","08-24 16:03:49,PAROLAPARA,(1)PAROLAPARA hesabina 931313 dogrulama kodu ile giris yapabilirsin. Guvenligin icin giris kodunu kimse ile paylasm","08-24 16:03:49,PAROLAPARA,(2)a.  Referanse kodu: HRKY69\n     B002","08-24 17:51:18,PAROLAPARA,(1)PAROLAPARA hesabina 613634 dogrulama kodu ile giris yapabilirsin. Guvenligin icin giris kodunu kimse ile paylasm","","","","","","08-24 15:57:37,PAROLAPARA,(1)PAROLAPARA hesabina 975908 dogrulama kodu ile giris yapabilirsin. Guvenligin icin giris kodunu kimse ile paylasm"];
+pos=4;
+sms_row_insert(l13_sms_store, sms, pos, 13);
+
+
+sms= ["","","08-24 14:07:33,YASALUYARI,(1)994**22 TCKN ADINA 905310*3**0* NOLU HAT ICIN 'SIM KART DEGISIKLIGI' ISLEMI 23.08.2025 TARIHINDE YAPILMISTIR. RI","08-24 14:07:33,YASALUYARI,(2)ZANIZ/BILGINIZ DISINDA ISE LUTFEN TURKCEL","08-24 14:07:35,YASALUYARI,L ILE ILETISIME GECINIZ B002","08-24 15:13:27,TURKCELL,Sosyal aÃ§Ä±dan desteklenmesi gereken engellilere, harp ve vazife Åeh","08-24 15:13:34,TURKCELL,itlerinin dul ve yetimleri ile gazilere yÃ¶nelik sunulan tÃ¼m hizmetl","08-24 15:13:38,TURKCELL,ere http://turkcell.li/SosyalDestek internet baÄlantÄ±sÄ±ndan ulaÅabi","08-24 15:13:40,TURKCELL,lirsiniz. B002","08-24 15:51:50,2214,Sim kart degisikligi isleminiz baslatilmistir.Islem tamamlandiktan sonra mevcut sim kartiniz gecersiz olacaktir. B002"];
+pos=9;
+sms_row_insert(l14_sms_store, sms, pos, 14);
+
+
+sms= ["08-24 18:10:57,PAROLAPARA,Sifreni sifirlamak icin tek kullanimlik dogrulama kodun: 487982\nLutfen bu kodu kimseyle paylasma.\n B002","08-24 18:14:32,PAROLAPARA,Sifreni sifirlamak icin tek kullanimlik dogrulama kodun: 413893\nLutfen bu kodu kimseyle paylasma.\n B002","08-24 18:15:35,PAROLAPARA,(1)E-mail adresini degistirmek icin tek kullanimlik dogrulama kodun: 892575\nLutfen bu kodu kimse ile paylasma. B00","08-24 18:15:35,PAROLAPARA,(2)2","08-24 18:21:54,PAROLAPARA,OSMAN TATAR kullanicisina gondermis oldugun 30,00 TL basari ile iletildi.\n B002","08-24 17:07:50,PAROLAPARA,(1)PAROLAPARA hesabina 222050 dogrulama kodu ile giris yapabilirsin. Guvenligin icin giris kodunu kimse ile paylasm","","","08-24 18:00:42,PAROLAPARA,(1)PAROLAPARA hesabina 505285 dogrulama kodu ile giris yapabilirsin. Guvenligin icin giris kodunu kimse ile paylasÃ¹",""];
+pos=4;
+sms_row_insert(l15_sms_store, sms, pos, 15);
+
+
+sms= ["08-24 16:59:18,PAROLAPARA,(1)PAROLAPARA hesabina 115001 dogrulama kodu ile giris yapabilirsin. Guvenligin icin giris kodunu kimse ile paylasm","08-24 16:59:18,PAROLAPARA,(2)a.  Referanse kodu: ZG9BR3\n     B002","08-24 17:00:54,PAROLAPARA,(1)PAROLAPARA hesabina 823247 dogrulama kodu ile giris yapabilirsin. Guvenligin icin giris kodunu kimse ile paylasm","08-24 17:00:54,PAROLAPARA,(2)a.  Referanse kodu: PZ7O2R\n     B002","08-24 17:04:32,PAROLAPARA,Sifreni sifirlamak icin tek kullanimlik dogrulama kodun: 694541\nLutfen bu kodu kimseyle paylasma.\n B002","08-24 17:05:35,PAROLAPARA,(1)E-mail adresini degistirmek icin tek kullanimlik dogrulama kodun: 879217\nLutfen bu kodu kimse ile paylasma. B00","","08-24 16:29:39,PAROLAPARA,30.00 TRY tutarindaki bakiyen hesabina yuklendi.\n\n B002","08-24 16:30:42,PAROLAPARA,(1)PAROLAPARA hesabina 821075 dogrulama kodu ile giris yapabilirsin. Guvenligin icin giris kodunu kimse ile paylasm","08-24 16:30:42,PAROLAPARA,(2)a.  Referanse kodu: 0N5LEF\n     B002"];
+pos=6;
+sms_row_insert(l16_sms_store, sms, pos, 16);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+var line_obj = document.getElementsByName("line"); 
+
+line_obj[0].checked=true;
+toggle2('sms_store_tab', 16, 0);
+
+
+</script>
+			</div>
+			
+			
+			
+                        
+                        
+                        
+			
+
+		</td>
+	</tr>
+</table>
+					</td>
+				</tr>
+			</table>
+		</td>
+	</tr>
+</table>
+
+</body>
+
+</html>
+
