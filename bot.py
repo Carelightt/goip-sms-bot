@@ -198,31 +198,6 @@ def parse_sms_blocks(html_text:str):
             })
     return results
 
-# =============== HELPERS ===============
-def _norm(s: str) -> str:
-    s = s.replace("\r", "").strip()
-    s = re.sub(r"\s+", " ", s)
-    return s
-
-def make_key(row) -> str:
-    return f"{row['line']}::{_norm(row.get('date',''))}::{_norm(row.get('num',''))}::{_norm(row.get('content',''))}"
-
-def initial_warmup_seen(seen:set):
-    html_txt = fetch_html()
-    if not html_txt:
-        log.info("Warm-up: HTML boş geldi, yine de devam.")
-        return
-    rows = parse_sms_blocks(html_txt)
-    added = 0
-    for row in rows:
-        key = make_key(row)
-        if key not in seen:
-            seen.add(key)
-            added += 1
-    if added:
-        save_seen(seen)
-    log.info("Warm-up tamam: %d kayıt seen olarak işaretlendi.", added)
-
 # =============== KOMUTLAR ===============
 LINE_RE = re.compile(r'[lL]?(\d+)')
 
@@ -237,7 +212,6 @@ def handle_command(text:str, chat_id:str, routes:dict):
     cmd, arg = m.groups()
     cmd = cmd.lower()
 
-    # /start hiçbir şey yazmasın
     if cmd == "start":
         return routes
 
@@ -259,13 +233,14 @@ def handle_command(text:str, chat_id:str, routes:dict):
         for ln in lines:
             routes[str(chat_id)].add(ln)
         save_routes(routes)
-        tg_send_message(chat_id, f"✅ {', '.join('L'+str(x) for x in sorted(routes[str(chat_id))])}  BU GRUBA EKLENDİ.")
+        tg_send_message(chat_id, f"✅ {', '.join('L'+str(x) for x in sorted(routes[str(chat_id)]))}  BU GRUBA EKLENDİ.")
         return routes
 
     if cmd in {"kaldır", "kaldir", "iptal", "sil", "remove"}:
         if not arg:
             tg_send_message(chat_id,
-                "Kullanım: /kaldır L5 ... veya /kaldır 5 ...\nÖrn: /kaldır L2 L3\n"
+                "Kullanım:\n"
+                "• /kaldır L5 ... veya /kaldır 5 ...\n"
                 "• /kaldır hepsi → tüm hatları siler"
             )
             return routes
@@ -322,6 +297,31 @@ def handle_command(text:str, chat_id:str, routes:dict):
     )
     return routes
 
+# =============== ROUTING ===============
+def deliver_sms_to_routes(row, routes:dict):
+    line = int(row['line'])
+    sent_total = 0
+
+    if not routes:
+        if send_tg_formatted(CHAT_ID, row['line'], row['num'], row['content'], row['date']):
+            sent_total += 1
+        return sent_total
+
+    for chat_id, lines in routes.items():
+        try:
+            want = line in lines
+        except Exception:
+            want = False
+        if want:
+            ok = send_tg_formatted(chat_id, row['line'], row['num'], row['content'], row['date'])
+            if ok:
+                sent_total += 1
+            else:
+                time.sleep(0.3 + random.random()*0.5)
+                if send_tg_formatted(chat_id, row['line'], row['num'], row['content'], row['date']):
+                    sent_total += 1
+    return sent_total
+
 # =============== MAIN LOOP ===============
 def main():
     tg_delete_webhook(drop=False)
@@ -360,7 +360,7 @@ def main():
 
         except requests.exceptions.ReadTimeout:
             log.warning("GoIP Read timeout — atlıyorum.")
-        except requests.exceptions.RequestException as e:
+        except requests.RequestException as e:
             log.warning("Ağ hatası: %s", e)
         except Exception as e:
             log.warning("Hata: %s", e)
