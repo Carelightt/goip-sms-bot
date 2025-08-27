@@ -235,7 +235,7 @@ def handle_command(text:str, chat_id:str, routes:dict, chat_type:str):
     # ÖZEL SOHBET GÜVENLİĞİ: grup/süpergrup değilse reddet
     if chat_type not in ALLOWED_CHAT_TYPES:
         # İstersen tamamen sessiz de olabilirdik; ben kısa bir uyarı bırakıyorum:
-        tg_send_message(chat_id, "⛔ Bu komutlar sadece gruplarda çalışır.")
+        tg_send_message(chat_id, "⛔ Hakkınız yok. Destek için @CengizzAtay.")
         # varsa yanlışlıkla yazılmış kaydı da temizleyelim
         if str(chat_id) in routes:
             routes.pop(str(chat_id), None)
@@ -431,3 +431,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
