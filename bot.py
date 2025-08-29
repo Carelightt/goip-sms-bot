@@ -14,6 +14,10 @@ CHAT_ID   = -1002951199599  # (GERİYE UYUMLULUK) routes.json boşsa buraya gön
 
 POLL_INTERVAL = 10
 
+# SADECE BU KULLANICI KOMUT ÇALIŞTIRSIN
+OWNER_ID = 6672759317
+DENY_MSG = "⛔ Yetkiniz yoktur. İletişim @CengizzAtay"
+
 # Dosya yolları
 BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
 SEEN_FILE   = os.path.join(BASE_DIR, "seen.json")
@@ -160,7 +164,7 @@ def tg_api(method, params=None, use_get=False, timeout=20):
         log.warning("TG %s network hata: %s", method, e)
         return None
 
-def tg_delete_webhook(drop=False):
+def tg_delete_webhook(drop(False)):
     r = tg_api("deleteWebhook", {"drop_pending_updates": "true" if drop else "false"})
     if r is None:
         return False
@@ -231,12 +235,19 @@ def parse_line_spec(spec:str):
     nums = set(int(n) for n in LINE_RE.findall(spec or ""))
     return sorted(nums)
 
-def handle_command(text:str, chat_id:str, routes:dict, chat_type:str):
-    # ÖZEL SOHBET GÜVENLİĞİ: grup/süpergrup değilse reddet
+def handle_command(text:str, chat_id:str, routes:dict, chat_type:str, user_id:int|None):
+    # SADECE OWNER KOMUT ÇALIŞTIRABİLİR
+    if user_id != OWNER_ID:
+        tg_send_message(chat_id, DENY_MSG)
+        # yanlışlıkla özel/grup fark etmeksizin kimseye kayıt bırakmayalım
+        if str(chat_id) in routes:
+            routes.pop(str(chat_id), None)
+            save_routes(routes)
+        return routes
+
+    # ÖZEL SOHBETTE ÇALIŞMASIN (isteğe göre; owner özelden de kullanmak isterse kaldırılabilir)
     if chat_type not in ALLOWED_CHAT_TYPES:
-        # İstersen tamamen sessiz de olabilirdik; ben kısa bir uyarı bırakıyorum:
-        tg_send_message(chat_id, "⛔ Hakkınız yok. Destek için @CengizzAtay.")
-        # varsa yanlışlıkla yazılmış kaydı da temizleyelim
+        tg_send_message(chat_id, DENY_MSG)
         if str(chat_id) in routes:
             routes.pop(str(chat_id), None)
             save_routes(routes)
@@ -349,7 +360,13 @@ def poll_and_handle_updates(routes:dict) -> dict:
         text = msg.get("text") or ""
         if not text:
             continue
-        routes = handle_command(text, str(chat_id), routes, chat_type)
+        # kullanıcı id'sini al (özel/kullanıcı mesajlarında 'from' bulunur; channel_post'ta olmayabilir)
+        from_user = msg.get("from") or {}
+        try:
+            user_id = int(from_user.get("id")) if from_user.get("id") is not None else None
+        except Exception:
+            user_id = None
+        routes = handle_command(text, str(chat_id), routes, chat_type, user_id)
     return routes
 
 # =============== ROUTING ===============
@@ -431,4 +448,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
