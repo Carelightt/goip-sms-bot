@@ -5,9 +5,9 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 # ==== AYARLAR ====
-GOIP_URL  = "http://5.11.128.154:6060/default/en_US/tools.html?type=sms_inbox"
+GOIP_URL  = "http://5.11.128.154:5050/default/en_US/tools.html?type=sms_inbox"
 GOIP_USER = "user"
-GOIP_PASS = "9090"
+GOIP_PASS = "1010"
 
 BOT_TOKEN = "7951358762:AAFa8iIDXqbhlfsXYxXv_Q41QZjgH1FHvNo"
 CHAT_ID   = -1002951199599  # (GERİYE UYUMLULUK) routes.json boşsa buraya gönderilir
@@ -448,3 +448,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
