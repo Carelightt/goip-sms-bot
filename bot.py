@@ -81,6 +81,7 @@ def load_routes() -> dict:
                     cid = str(int(k))
                 except Exception:
                     cid = str(k)
+                # JSON'dan liste gelir → bellekte set tutuyoruz
                 fixed[cid] = set(int(x) for x in v if str(x).isdigit())
             return fixed
         except Exception as e:
@@ -225,29 +226,19 @@ def tg_fetch_updates(timeout=20):
 
 # =============== KOMUTLAR ===============
 LINE_RE = re.compile(r'[lL]?(\d+)')
-ALLOWED_CHAT_TYPES = {"group", "supergroup"}  # sadece gruplarda komut çalışsın
 
 def parse_line_spec(spec:str):
     nums = set(int(n) for n in LINE_RE.findall(spec or ""))
     return sorted(nums)
 
-def handle_command(text:str, chat_id:str, routes:dict, chat_type:str):
-    # ÖZEL SOHBET GÜVENLİĞİ: grup/süpergrup değilse reddet
-    if chat_type not in ALLOWED_CHAT_TYPES:
-        # İstersen tamamen sessiz de olabilirdik; ben kısa bir uyarı bırakıyorum:
-        tg_send_message(chat_id, "⛔ Bu komutlar sadece gruplarda çalışır.")
-        # varsa yanlışlıkla yazılmış kaydı da temizleyelim
-        if str(chat_id) in routes:
-            routes.pop(str(chat_id), None)
-            save_routes(routes)
-        return routes
-
+def handle_command(text:str, chat_id:str, routes:dict):
     m = re.match(r'^/([^\s@]+)(?:@\w+)?(?:\s+(.*))?$', text.strip())
     if not m:
         return routes
     cmd, arg = m.groups()
     cmd = cmd.lower()
 
+    # /start hiçbir şey yazmasın
     if cmd == "start":
         return routes
 
@@ -272,6 +263,7 @@ def handle_command(text:str, chat_id:str, routes:dict, chat_type:str):
         tg_send_message(chat_id, f"✅ {', '.join('L'+str(x) for x in sorted(routes[str(chat_id)]))}  BU GRUBA EKLENDİ.")
         return routes
 
+    # /kaldır alias'ları: kaldır, kaldir, iptal, sil, remove + hepsi
     if cmd in {"kaldır", "kaldir", "iptal", "sil", "remove"}:
         if not arg:
             tg_send_message(chat_id,
@@ -323,6 +315,7 @@ def handle_command(text:str, chat_id:str, routes:dict, chat_type:str):
             tg_send_message(chat_id, f"Aktif Linelar: <code>{', '.join('L'+str(x) for x in sorted(lines))}</code>")
         return routes
 
+    # bilinmeyen /komutlar için yardım
     tg_send_message(chat_id,
         "Komutlar:\n"
         "• /whereami → chat_id gösterir\n"
@@ -343,13 +336,12 @@ def poll_and_handle_updates(routes:dict) -> dict:
             continue
         chat = msg.get("chat") or {}
         chat_id = chat.get("id")
-        chat_type = chat.get("type", "")
         if not chat_id:
             continue
         text = msg.get("text") or ""
         if not text:
             continue
-        routes = handle_command(text, str(chat_id), routes, chat_type)
+        routes = handle_command(text, str(chat_id), routes)
     return routes
 
 # =============== ROUTING ===============
@@ -363,13 +355,6 @@ def deliver_sms_to_routes(row, routes:dict):
         return sent_total
 
     for chat_id, lines in routes.items():
-        # EK GÜVENLİK: özel sohbet idsine (pozitif) ASLA göndermeyelim
-        try:
-            if int(chat_id) > 0:
-                continue
-        except Exception:
-            continue
-
         try:
             want = line in lines
         except Exception:
