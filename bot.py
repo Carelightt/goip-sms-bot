@@ -10,7 +10,7 @@ GOIP_USER = "user"
 GOIP_PASS = "1010"
 
 BOT_TOKEN = "7951358762:AAFa8iIDXqbhlfsXYxXv_Q41QZjgH1FHvNo"
-CHAT_ID   = -1002951199599  # (GERİYE UYUMLULUK) routes.json boşsa buraya gönderilir
+CHAT_ID   = -1003081296225  # (GERİYE UYUMLULUK) routes.json boşsa buraya gönderilir
 
 POLL_INTERVAL = 10
 
@@ -448,4 +448,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
