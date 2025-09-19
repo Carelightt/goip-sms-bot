@@ -9,8 +9,8 @@ GOIP_URL  = "http://5.11.128.154:6060/default/en_US/tools.html?type=sms_inbox"
 GOIP_USER = "user"
 GOIP_PASS = "9090"
 
-BOT_TOKEN = "8480045051:AAGDht_XMNXuF2ZNUKC49J_m_n2GTGkoyys"
-CHAT_IDS  = [-1002951199599, -1003063387437]  # (GERİYE UYUMLULUK) routes.json boşsa buraya gönderilir
+BOT_TOKEN = "7951358762:AAFa8iIDXqbhlfsXYxXv_Q41QZjgH1FHvNo"
+CHAT_ID   = -1002951199599  # (GERİYE UYUMLULUK) routes.json boşsa buraya gönderilir
 
 POLL_INTERVAL = 10
 
@@ -164,7 +164,7 @@ def tg_api(method, params=None, use_get=False, timeout=20):
         log.warning("TG %s network hata: %s", method, e)
         return None
 
-def tg_delete_webhook(drop=False):
+def tg_delete_webhook(drop(False)):
     r = tg_api("deleteWebhook", {"drop_pending_updates": "true" if drop else "false"})
     if r is None:
         return False
@@ -227,4 +227,224 @@ def tg_fetch_updates(timeout=20):
         UPD_OFFSET = results[-1]["update_id"] + 1
     return results
 
-# (Kalan kısımlar aynı, sadece CHAT_IDS ile devam edecek)
+# =============== KOMUTLAR ===============
+LINE_RE = re.compile(r'[lL]?(\d+)')
+ALLOWED_CHAT_TYPES = {"group", "supergroup"}  # sadece gruplarda komut çalışsın
+
+def parse_line_spec(spec:str):
+    nums = set(int(n) for n in LINE_RE.findall(spec or ""))
+    return sorted(nums)
+
+def handle_command(text:str, chat_id:str, routes:dict, chat_type:str, user_id:int|None):
+    # SADECE OWNER KOMUT ÇALIŞTIRABİLİR
+    if user_id != OWNER_ID:
+        tg_send_message(chat_id, DENY_MSG)
+        # yanlışlıkla özel/grup fark etmeksizin kimseye kayıt bırakmayalım
+        if str(chat_id) in routes:
+            routes.pop(str(chat_id), None)
+            save_routes(routes)
+        return routes
+
+    # ÖZEL SOHBETTE ÇALIŞMASIN (isteğe göre; owner özelden de kullanmak isterse kaldırılabilir)
+    if chat_type not in ALLOWED_CHAT_TYPES:
+        tg_send_message(chat_id, DENY_MSG)
+        if str(chat_id) in routes:
+            routes.pop(str(chat_id), None)
+            save_routes(routes)
+        return routes
+
+    m = re.match(r'^/([^\s@]+)(?:@\w+)?(?:\s+(.*))?$', text.strip())
+    if not m:
+        return routes
+    cmd, arg = m.groups()
+    cmd = cmd.lower()
+
+    if cmd == "start":
+        return routes
+
+    if cmd == "whereami":
+        tg_send_message(chat_id, f"🧭 <b>whereami</b>\n<code>{chat_id}</code>")
+        return routes
+
+    if cmd == "numaraver":
+        if not arg:
+            tg_send_message(chat_id,
+                "Kullanım: /numaraver L1 L5 ...\nÖrn: /numaraver L1 L5 L7"
+            )
+            return routes
+        lines = parse_line_spec(arg)
+        if not lines:
+            tg_send_message(chat_id, "Hatalı format. Örn: /numaraver L2 L3")
+            return routes
+        routes.setdefault(str(chat_id), set())
+        for ln in lines:
+            routes[str(chat_id)].add(ln)
+        save_routes(routes)
+        tg_send_message(chat_id, f"✅ {', '.join('L'+str(x) for x in sorted(routes[str(chat_id)]))}  BU GRUBA EKLENDİ.")
+        return routes
+
+    if cmd in {"kaldır", "kaldir", "iptal", "sil", "remove"}:
+        if not arg:
+            tg_send_message(chat_id,
+                "Kullanım:\n"
+                "• /kaldır L5 ... veya /kaldır 5 ...\n"
+                "• /kaldır hepsi → tüm hatları siler"
+            )
+            return routes
+
+        arg = arg.strip()
+        if arg.lower() in {"hepsi", "all"}:
+            if str(chat_id) in routes and routes[str(chat_id)]:
+                routes.pop(str(chat_id), None)
+                save_routes(routes)
+                tg_send_message(chat_id, "❌ Tüm Numaralar kaldırıldı. Bu gruba artık SMS düşmeyecek.")
+            else:
+                tg_send_message(chat_id, "ℹ️ Zaten hiç hat opsiyonlu değil.")
+            return routes
+
+        lines = parse_line_spec(arg)
+        if not lines:
+            tg_send_message(chat_id, "Hatalı format. Örn: /kaldır L2 L3 veya /kaldır hepsi")
+            return routes
+        current = set(routes.get(str(chat_id), []))
+        removed_any = False
+        for ln in lines:
+            if ln in current:
+                current.remove(ln)
+                removed_any = True
+        if current:
+            routes[str(chat_id)] = current
+        else:
+            routes.pop(str(chat_id), None)
+        save_routes(routes)
+        if removed_any:
+            if current:
+                tg_send_message(chat_id, f"❌ Kaldırıldı. Kalan Line'lar : <code>{', '.join('L'+str(x) for x in sorted(current))}</code>")
+            else:
+                tg_send_message(chat_id, "❌ Tüm Numaralar kaldırıldı. Bu gruba artık SMS düşmeyecek.")
+        else:
+            tg_send_message(chat_id, "Belirttiğin hat(lar) bu grupta yok.")
+        return routes
+
+    if cmd == "aktif":
+        lines = routes.get(str(chat_id))
+        if not lines:
+            tg_send_message(chat_id, "Bu gruba şu an hiç numara verilmemiş.")
+        else:
+            tg_send_message(chat_id, f"Aktif Linelar: <code>{', '.join('L'+str(x) for x in sorted(lines))}</code>")
+        return routes
+
+    tg_send_message(chat_id,
+        "Komutlar:\n"
+        "• /whereami → chat_id gösterir\n"
+        "• /numaraver L1 L5 ... → hatları ekle\n"
+        "• /kaldır L1 L5 ... → hatları çıkar (alias: /kaldir, /iptal, /sil, /remove)\n"
+        "• /kaldır hepsi → tüm hatları sıfırlar\n"
+        "• /aktif → aktif hatları listele"
+    )
+    return routes
+
+def poll_and_handle_updates(routes:dict) -> dict:
+    updates = tg_fetch_updates(timeout=10)
+    if not updates:
+        return routes
+    for u in updates:
+        msg = u.get("message") or u.get("channel_post")
+        if not msg:
+            continue
+        chat = msg.get("chat") or {}
+        chat_id = chat.get("id")
+        chat_type = chat.get("type", "")
+        if not chat_id:
+            continue
+        text = msg.get("text") or ""
+        if not text:
+            continue
+        # kullanıcı id'sini al (özel/kullanıcı mesajlarında 'from' bulunur; channel_post'ta olmayabilir)
+        from_user = msg.get("from") or {}
+        try:
+            user_id = int(from_user.get("id")) if from_user.get("id") is not None else None
+        except Exception:
+            user_id = None
+        routes = handle_command(text, str(chat_id), routes, chat_type, user_id)
+    return routes
+
+# =============== ROUTING ===============
+def deliver_sms_to_routes(row, routes:dict):
+    line = int(row['line'])
+    sent_total = 0
+
+    if not routes:
+        if send_tg_formatted(CHAT_ID, row['line'], row['num'], row['content'], row['date']):
+            sent_total += 1
+        return sent_total
+
+    for chat_id, lines in routes.items():
+        # EK GÜVENLİK: özel sohbet idsine (pozitif) ASLA göndermeyelim
+        try:
+            if int(chat_id) > 0:
+                continue
+        except Exception:
+            continue
+
+        try:
+            want = line in lines
+        except Exception:
+            want = False
+        if want:
+            ok = send_tg_formatted(chat_id, row['line'], row['num'], row['content'], row['date'])
+            if ok:
+                sent_total += 1
+            else:
+                time.sleep(0.3 + random.random()*0.5)
+                if send_tg_formatted(chat_id, row['line'], row['num'], row['content'], row['date']):
+                    sent_total += 1
+    return sent_total
+
+# =============== MAIN LOOP ===============
+def main():
+    tg_delete_webhook(drop=False)
+
+    seen = load_seen()
+    routes = load_routes()
+    log.info("Başladı, görülen %d kayıt | aktif grup sayısı: %d", len(seen), len(routes))
+
+    initial_warmup_seen(seen)
+
+    while True:
+        try:
+            routes = poll_and_handle_updates(routes)
+
+            html_txt = fetch_html()
+            if not html_txt:
+                time.sleep(3)
+                continue
+
+            rows = parse_sms_blocks(html_txt)
+            newc = 0
+            routed = 0
+            for row in rows:
+                key = make_key(row)
+                if key in seen:
+                    continue
+                sent = deliver_sms_to_routes(row, routes)
+                if sent > 0:
+                    routed += sent
+                seen.add(key)
+                newc += 1
+
+            if newc:
+                save_seen(seen)
+                log.info("Yeni %d SMS kaydı işlendi | gönderim: %d", newc, routed)
+
+        except requests.exceptions.ReadTimeout:
+            log.warning("GoIP Read timeout — atlıyorum.")
+        except requests.RequestException as e:
+            log.warning("Ağ hatası: %s", e)
+        except Exception as e:
+            log.warning("Hata: %s", e)
+
+        time.sleep(POLL_INTERVAL)
+
+if __name__ == "__main__":
+    main()
