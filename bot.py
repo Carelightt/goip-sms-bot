@@ -3,7 +3,6 @@ import os, re, time, json, html, logging, requests, tempfile, random, shutil
 from requests.auth import HTTPBasicAuth
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
-from urllib.parse import urljoin  # 👈 link keşfi için
 
 # ==== AYARLAR ====
 GOIP_URL  = "http://5.11.128.154:5050/default/en_US/tools.html?type=sms_inbox"
@@ -98,47 +97,15 @@ def save_routes(routes:dict):
     _atomic_write(ROUTES_FILE, json.dumps(serializable, ensure_ascii=False, indent=2))
 
 # =============== GOIP ===============
-def fetch_html(url=None):
-    url = url or GOIP_URL
-    r = SESSION.get(url, timeout=(3, 6))
+def fetch_html():
+    r = SESSION.get(GOIP_URL, timeout=(3, 6))
     if r.status_code == 200:
         return r.text
-    log.warning("GoIP HTTP durum kodu: %s (%s)", r.status_code, url)
+    log.warning("GoIP HTTP durum kodu: %s", r.status_code)
     return ""
-
-def iter_inbox_pages():
-    """
-    Ana sayfayı çek, içindeki Line 1/2/.. linklerini/href'lerini bul ve hepsini tek tek çek.
-    Böylece 'butona tıklayınca gelen' sayfaların hepsi parse edilir (32+ line destekler).
-    """
-    pages = []
-    seen_urls = set()
-    base_html = fetch_html(GOIP_URL)
-    if base_html:
-        pages.append(base_html)
-    else:
-        return pages
-
-    # href içinde sms_inbox geçen tüm linkleri topla (relatif/abs fark etmez)
-    hrefs = set(re.findall(r'href="([^"]*sms_inbox[^"]*)"', base_html, flags=re.I))
-    # bazı arayüzlerde onclick ile de gelebilir
-    hrefs.update(re.findall(r'location\.href\s*=\s*[\'"]([^\'"]*sms_inbox[^\'"]*)[\'"]', base_html, flags=re.I))
-
-    for href in hrefs:
-        full = urljoin(GOIP_URL, href)
-        if full in seen_urls:
-            continue
-        seen_urls.add(full)
-        html_txt = fetch_html(full)
-        if html_txt:
-            pages.append(html_txt)
-
-    # Hiç link yakalanamazsa, en azından ana sayfadaki blokları parse ederiz
-    return pages
 
 def parse_sms_blocks(html_text:str):
     results=[]
-    # Beklenen desen: sms=[ "...", "..."]; pos=NN; sms_row_insert(... line)
     for m in re.finditer(r'sms=\s*\[(.*?)\];\s*pos=(\d+);\s*sms_row_insert\(.*?(\d+)\)', html_text, flags=re.S):
         arr_str, pos, line = m.groups()
         line = int(line)
@@ -169,18 +136,17 @@ def make_key(row) -> str:
     return f"{row['line']}::{_norm(row.get('date',''))}::{_norm(row.get('num',''))}::{_norm(row.get('content',''))}"
 
 def initial_warmup_seen(seen:set):
-    pages = iter_inbox_pages()
-    if not pages:
+    html_txt = fetch_html()
+    if not html_txt:
         log.info("Warm-up: HTML boş geldi, yine de devam.")
         return
+    rows = parse_sms_blocks(html_txt)
     added = 0
-    for html_txt in pages:
-        rows = parse_sms_blocks(html_txt)
-        for row in rows:
-            key = make_key(row)
-            if key not in seen:
-                seen.add(key)
-                added += 1
+    for row in rows:
+        key = make_key(row)
+        if key not in seen:
+            seen.add(key)
+            added += 1
     if added:
         save_seen(seen)
     log.info("Warm-up tamam: %d kayıt seen olarak işaretlendi.", added)
@@ -298,13 +264,20 @@ def handle_command(text:str, chat_id:str, routes:dict, chat_type:str, user_id:in
         tg_send_message(chat_id, f"🧭 <b>whereami</b>\n<code>{chat_id}</code>")
         return routes
 
+    # 👇 YENİ: /grupaç (alias /grupac) — grubu aç, routes.json oluştur
+    if cmd in {"grupaç", "grupac"}:
+        routes.setdefault(str(chat_id), set())
+        save_routes(routes)
+        tg_send_message(chat_id, "✅ Bu grup açıldı. Şimdi /numaraver 1 2 3 ... ile hatları tanımlayabilirsin.")
+        return routes
+
     if cmd == "numaraver":
         if not arg:
-            tg_send_message(chat_id, "Kullanım: /numaraver L1 L5 ...")
+            tg_send_message(chat_id, "Kullanım: /numaraver 1 5 ...  (L1 L5 de olur)")
             return routes
         lines = parse_line_spec(arg)
         if not lines:
-            tg_send_message(chat_id, "Hatalı format. Örn: /numaraver L2 L3")
+            tg_send_message(chat_id, "Hatalı format. Örn: /numaraver 2 3  veya  /numaraver L2 L3")
             return routes
         routes.setdefault(str(chat_id), set())
         for ln in lines:
@@ -315,7 +288,7 @@ def handle_command(text:str, chat_id:str, routes:dict, chat_type:str, user_id:in
 
     if cmd in {"kaldır", "kaldir", "iptal", "sil", "remove"}:
         if not arg:
-            tg_send_message(chat_id, "Kullanım: /kaldır L5 ... veya /kaldır hepsi")
+            tg_send_message(chat_id, "Kullanım: /kaldır 5 ...  veya  /kaldır hepsi")
             return routes
 
         arg = arg.strip()
@@ -323,41 +296,49 @@ def handle_command(text:str, chat_id:str, routes:dict, chat_type:str, user_id:in
             if str(chat_id) in routes and routes[str(chat_id)]:
                 routes.pop(str(chat_id), None)
                 save_routes(routes)
-                tg_send_message(chat_id, "❌ Tüm Numaralar kaldırıldı.")
+                tg_send_message(chat_id, "❌ Tüm Numaralar kaldırıldı. Bu gruba artık SMS düşmeyecek.")
             else:
                 tg_send_message(chat_id, "ℹ️ Zaten hiç hat opsiyonlu değil.")
             return routes
 
         lines = parse_line_spec(arg)
         if not lines:
-            tg_send_message(chat_id, "Hatalı format. Örn: /kaldır L2 L3")
+            tg_send_message(chat_id, "Hatalı format. Örn: /kaldır 2 3  veya  /kaldır L2 L3")
             return routes
         current = set(routes.get(str(chat_id), []))
+        removed_any = False
         for ln in lines:
             if ln in current:
                 current.remove(ln)
+                removed_any = True
         if current:
             routes[str(chat_id)] = current
         else:
             routes.pop(str(chat_id), None)
         save_routes(routes)
-        tg_send_message(chat_id, "❌ Kaldırma işlemi tamamlandı.")
+        if removed_any:
+            if current:
+                tg_send_message(chat_id, f"❌ Kaldırıldı. Kalan Line'lar : <code>{', '.join('L'+str(x) for x in sorted(current))}</code>")
+            else:
+                tg_send_message(chat_id, "❌ Tüm Numaralar kaldırıldı. Bu gruba artık SMS düşmeyecek.")
+        else:
+            tg_send_message(chat_id, "Belirttiğin hat(lar) bu grupta yok.")
         return routes
 
     if cmd == "aktif":
         lines = routes.get(str(chat_id))
         if not lines:
-            tg_send_message(chat_id, "Bu gruba şu an hiç numara verilmemiş.")
+            tg_send_message(chat_id, "Bu gruba şu an hiç numara verilmemiş. Önce /grupaç, sonra /numaraver ...")
         else:
             tg_send_message(chat_id, f"Aktif Linelar: <code>{', '.join('L'+str(x) for x in sorted(lines))}</code>")
         return routes
 
     tg_send_message(chat_id,
         "Komutlar:\n"
+        "• /grupaç → grubu açar (routes.json oluşturur)\n"
         "• /whereami → chat_id gösterir\n"
-        "• /numaraver L1 L5 ... → hatları ekle\n"
-        "• /kaldır L1 L5 ... → hatları çıkar\n"
-        "• /kaldır hepsi → tüm hatları sıfırlar\n"
+        "• /numaraver 1 5 ... → hatları ekle (L1 L5 de olur)\n"
+        "• /kaldır 1 5 ... → hatları çıkar  |  /kaldır hepsi\n"
         "• /aktif → aktif hatları listele"
     )
     return routes
@@ -423,24 +404,23 @@ def main():
         try:
             routes = poll_and_handle_updates(routes)
 
-            pages = iter_inbox_pages()
-            if not pages:
+            html_txt = fetch_html()
+            if not html_txt:
                 time.sleep(3)
                 continue
 
+            rows = parse_sms_blocks(html_txt)
             newc = 0
             routed = 0
-            for html_txt in pages:
-                rows = parse_sms_blocks(html_txt)
-                for row in rows:
-                    key = make_key(row)
-                    if key in seen:
-                        continue
-                    sent = deliver_sms_to_routes(row, routes)
-                    if sent > 0:
-                        routed += sent
-                    seen.add(key)
-                    newc += 1
+            for row in rows:
+                key = make_key(row)
+                if key in seen:
+                    continue
+                sent = deliver_sms_to_routes(row, routes)
+                if sent > 0:
+                    routed += sent
+                seen.add(key)
+                newc += 1
 
             if newc:
                 save_seen(seen)
