@@ -3,6 +3,7 @@ import os, re, time, json, html, logging, requests, tempfile, random, shutil
 from requests.auth import HTTPBasicAuth
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+from urllib.parse import urljoin  # 👈 link keşfi için
 
 # ==== AYARLAR ====
 GOIP_URL  = "http://5.11.128.154:5050/default/en_US/tools.html?type=sms_inbox"
@@ -97,15 +98,47 @@ def save_routes(routes:dict):
     _atomic_write(ROUTES_FILE, json.dumps(serializable, ensure_ascii=False, indent=2))
 
 # =============== GOIP ===============
-def fetch_html():
-    r = SESSION.get(GOIP_URL, timeout=(3, 6))
+def fetch_html(url=None):
+    url = url or GOIP_URL
+    r = SESSION.get(url, timeout=(3, 6))
     if r.status_code == 200:
         return r.text
-    log.warning("GoIP HTTP durum kodu: %s", r.status_code)
+    log.warning("GoIP HTTP durum kodu: %s (%s)", r.status_code, url)
     return ""
+
+def iter_inbox_pages():
+    """
+    Ana sayfayı çek, içindeki Line 1/2/.. linklerini/href'lerini bul ve hepsini tek tek çek.
+    Böylece 'butona tıklayınca gelen' sayfaların hepsi parse edilir (32+ line destekler).
+    """
+    pages = []
+    seen_urls = set()
+    base_html = fetch_html(GOIP_URL)
+    if base_html:
+        pages.append(base_html)
+    else:
+        return pages
+
+    # href içinde sms_inbox geçen tüm linkleri topla (relatif/abs fark etmez)
+    hrefs = set(re.findall(r'href="([^"]*sms_inbox[^"]*)"', base_html, flags=re.I))
+    # bazı arayüzlerde onclick ile de gelebilir
+    hrefs.update(re.findall(r'location\.href\s*=\s*[\'"]([^\'"]*sms_inbox[^\'"]*)[\'"]', base_html, flags=re.I))
+
+    for href in hrefs:
+        full = urljoin(GOIP_URL, href)
+        if full in seen_urls:
+            continue
+        seen_urls.add(full)
+        html_txt = fetch_html(full)
+        if html_txt:
+            pages.append(html_txt)
+
+    # Hiç link yakalanamazsa, en azından ana sayfadaki blokları parse ederiz
+    return pages
 
 def parse_sms_blocks(html_text:str):
     results=[]
+    # Beklenen desen: sms=[ "...", "..."]; pos=NN; sms_row_insert(... line)
     for m in re.finditer(r'sms=\s*\[(.*?)\];\s*pos=(\d+);\s*sms_row_insert\(.*?(\d+)\)', html_text, flags=re.S):
         arr_str, pos, line = m.groups()
         line = int(line)
@@ -136,17 +169,18 @@ def make_key(row) -> str:
     return f"{row['line']}::{_norm(row.get('date',''))}::{_norm(row.get('num',''))}::{_norm(row.get('content',''))}"
 
 def initial_warmup_seen(seen:set):
-    html_txt = fetch_html()
-    if not html_txt:
+    pages = iter_inbox_pages()
+    if not pages:
         log.info("Warm-up: HTML boş geldi, yine de devam.")
         return
-    rows = parse_sms_blocks(html_txt)
     added = 0
-    for row in rows:
-        key = make_key(row)
-        if key not in seen:
-            seen.add(key)
-            added += 1
+    for html_txt in pages:
+        rows = parse_sms_blocks(html_txt)
+        for row in rows:
+            key = make_key(row)
+            if key not in seen:
+                seen.add(key)
+                added += 1
     if added:
         save_seen(seen)
     log.info("Warm-up tamam: %d kayıt seen olarak işaretlendi.", added)
@@ -389,23 +423,24 @@ def main():
         try:
             routes = poll_and_handle_updates(routes)
 
-            html_txt = fetch_html()
-            if not html_txt:
+            pages = iter_inbox_pages()
+            if not pages:
                 time.sleep(3)
                 continue
 
-            rows = parse_sms_blocks(html_txt)
             newc = 0
             routed = 0
-            for row in rows:
-                key = make_key(row)
-                if key in seen:
-                    continue
-                sent = deliver_sms_to_routes(row, routes)
-                if sent > 0:
-                    routed += sent
-                seen.add(key)
-                newc += 1
+            for html_txt in pages:
+                rows = parse_sms_blocks(html_txt)
+                for row in rows:
+                    key = make_key(row)
+                    if key in seen:
+                        continue
+                    sent = deliver_sms_to_routes(row, routes)
+                    if sent > 0:
+                        routed += sent
+                    seen.add(key)
+                    newc += 1
 
             if newc:
                 save_seen(seen)
