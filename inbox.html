@@ -1,11 +1,11 @@
-
-
-
-
-
-
-
-<html>
+
+
+
+
+
+
+
+<html>
   
   
 
@@ -18,113 +18,113 @@
     
     
 
-<head>
-<meta http-equiv="Cache-Control" content="no-cache">
-<meta http-equiv="Content-Language" content="en-us">
-<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-
-<title>GoIP16</title>
-
-<link rel="stylesheet" type="text/css" href="/style/default.css?1">
-<style type="text/css">
-.visible{
-display:block;
-}
-</style>
-<script lang="javascript" src="/script/dynamic.js?2"></script>
-<script lang="javascript">
-var uptime_s="";
-if(uptime_s!="") uptime_s=parseInt(uptime_s);
-if (document.getElementById){
-
-	document.write('<style type="text/css">\n');
-	document.write('.invisible{display:none;}\n');
-	document.write('</style>\n');
-}
-
-function set_uptime(second)
-{
-	document.getElementById('uptime').innerHTML=[parseInt(second / 60 / 60), parseInt(second / 60 % 60), second % 60].join(":").replace(/\b(\d)\b/g, "0$1");
-}
-
-function set_current_time()
-{
-	var d=new Date(Date.parse(document.getElementById('time_text').innerHTML.slice(-19).replace(/-/g, "/")));
-	d.setSeconds(d.getSeconds()+1);
-
-	s = (d.getFullYear())+"-"+((d.getMonth()+1)<10?"0"+(d.getMonth()+1):(d.getMonth()+1))+"-"+(d.getDate()<10?"0"+d.getDate():d.getDate()) +" "
-	s += (d.getHours()<10?"0"+(d.getHours()):d.getHours()) + ":"
-	s += (d.getMinutes()<10?"0"+(d.getMinutes()):d.getMinutes()) + ":"
-	s += (d.getSeconds()<10?"0"+(d.getSeconds()):d.getSeconds())
-	document.getElementById('time_text').innerHTML = s;
-
-	if(uptime_s!="") set_uptime(++uptime_s)
-
-	setTimeout('set_current_time()', 1000)
-}
-setTimeout('set_current_time()', 1000)
-</script>
-</head>
-
-<body>
-<table id="mainframe" height="100%" cellSpacing="0" cellPadding="0" width="768" border="0">
-<tr>
-<td width="314" class="banner" height="124">
-<img height="134" src="/images/perse.jpg" width="312" border="0">
-		</td>
-		<td class="banner" height="124" valign="bottom" width="454">
-			<table cellSpacing="0" cellPadding="0" width="100%" height="100%"border="0">
-				<tr>
-					<td height="24" width="324">
-					</td>
-					<td width="95" align="right">
-						<a href="../zh_CN/status.html"><image height="20" width="60" border="0" src="/images/chs.gif"></a>&nbsp;&nbsp;<br><a href="logout.html" width="60"><span class="time_text">Logout</span></a>&nbsp;&nbsp;&nbsp;
-					</td>
-				</tr>
-				<tr>
-					<td height="100" valign="bottom">
-                                           
-						<span class="subtitle">GoIP16</span>
-                                           
-					</td>
-                                        <td valign="bottom" align="right" class="time_text">
-                                                <table cellspacing="0" cellpadding="0" border="0">
-                                                 <tr>
-                                                  <td class="time_text" >SN(Serial Number):</td>
-                                                  <td class="time_text">GOIP16E17TR12111167</td>
-                                                 </tr>
-                                                 <tr>
-                                                  <td class="time_text" >Firmware Version:&nbsp;&nbsp;</td>
+<head>
+<meta http-equiv="Cache-Control" content="no-cache">
+<meta http-equiv="Content-Language" content="en-us">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+
+<title>GoIP16</title>
+
+<link rel="stylesheet" type="text/css" href="/style/default.css?1">
+<style type="text/css">
+.visible{
+display:block;
+}
+</style>
+<script lang="javascript" src="/script/dynamic.js?2"></script>
+<script lang="javascript">
+var uptime_s="";
+if(uptime_s!="") uptime_s=parseInt(uptime_s);
+if (document.getElementById){
+
+	document.write('<style type="text/css">\n');
+	document.write('.invisible{display:none;}\n');
+	document.write('</style>\n');
+}
+
+function set_uptime(second)
+{
+	document.getElementById('uptime').innerHTML=[parseInt(second / 60 / 60), parseInt(second / 60 % 60), second % 60].join(":").replace(/\b(\d)\b/g, "0$1");
+}
+
+function set_current_time()
+{
+	var d=new Date(Date.parse(document.getElementById('time_text').innerHTML.slice(-19).replace(/-/g, "/")));
+	d.setSeconds(d.getSeconds()+1);
+
+	s = (d.getFullYear())+"-"+((d.getMonth()+1)<10?"0"+(d.getMonth()+1):(d.getMonth()+1))+"-"+(d.getDate()<10?"0"+d.getDate():d.getDate()) +" "
+	s += (d.getHours()<10?"0"+(d.getHours()):d.getHours()) + ":"
+	s += (d.getMinutes()<10?"0"+(d.getMinutes()):d.getMinutes()) + ":"
+	s += (d.getSeconds()<10?"0"+(d.getSeconds()):d.getSeconds())
+	document.getElementById('time_text').innerHTML = s;
+
+	if(uptime_s!="") set_uptime(++uptime_s)
+
+	setTimeout('set_current_time()', 1000)
+}
+setTimeout('set_current_time()', 1000)
+</script>
+</head>
+
+<body>
+<table id="mainframe" height="100%" cellSpacing="0" cellPadding="0" width="768" border="0">
+<tr>
+<td width="314" class="banner" height="124">
+<img height="134" src="/images/perse.jpg" width="312" border="0">
+		</td>
+		<td class="banner" height="124" valign="bottom" width="454">
+			<table cellSpacing="0" cellPadding="0" width="100%" height="100%"border="0">
+				<tr>
+					<td height="24" width="324">
+					</td>
+					<td width="95" align="right">
+						<a href="../zh_CN/status.html"><image height="20" width="60" border="0" src="/images/chs.gif"></a>&nbsp;&nbsp;<br><a href="logout.html" width="60"><span class="time_text">Logout</span></a>&nbsp;&nbsp;&nbsp;
+					</td>
+				</tr>
+				<tr>
+					<td height="100" valign="bottom">
+                                           
+						<span class="subtitle">GoIP16</span>
+                                           
+					</td>
+                                        <td valign="bottom" align="right" class="time_text">
+                                                <table cellspacing="0" cellpadding="0" border="0">
+                                                 <tr>
+                                                  <td class="time_text" >SN(Serial Number):</td>
+                                                  <td class="time_text">GOIP16E17TR12111167</td>
+                                                 </tr>
+                                                 <tr>
+                                                  <td class="time_text" >Firmware Version:&nbsp;&nbsp;</td>
                                                   <td class="time_text">GST-1.01-73-1
-</td>
-                                                 </tr>
-                                                 <tr>
-                                                  <td class="time_text">Module Version:</td>
-                                                  <td class="time_text">G610_V0C.58.0D_T17</td>
-                                                 </tr>
-                                                 <tr>
-                                                  <td class="time_text">Uptime:</td>
-                                                  <td class="time_text" id="uptime"></td>
-                                                 </tr>
-                                                 <tr>
-                                                  <td class="time_text">Last Login Time:</td>
-                                                  <td class="time_text">2025-08-24 18:50:00</td>
-                                                 </tr>
-                                                 <tr>
-                                                  <td class="time_text">Current Time:</td>
-                                                  <td class="time_text" id="time_text">2025-08-24 19:06:30</td>
-                                                 </tr>
-                                                </table>
-                                        </td>
-				</tr>
-			</table>
-		</td>
-	</tr>
-	<tr>
-		<td colSpan="2">
-			<table height="100%" cellSpacing="0" cellPadding="0" width="100%" bgColor="#ffffff" border="0">
-				<tr>
-					<td vAlign="top" width="196" class="sidebar">
+</td>
+                                                 </tr>
+                                                 <tr>
+                                                  <td class="time_text">Module Version:</td>
+                                                  <td class="time_text">G610_V0C.58.0D_T17</td>
+                                                 </tr>
+                                                 <tr>
+                                                  <td class="time_text">Uptime:</td>
+                                                  <td class="time_text" id="uptime"></td>
+                                                 </tr>
+                                                 <tr>
+                                                  <td class="time_text">Last Login Time:</td>
+                                                  <td class="time_text">2025-08-24 18:50:00</td>
+                                                 </tr>
+                                                 <tr>
+                                                  <td class="time_text">Current Time:</td>
+                                                  <td class="time_text" id="time_text">2025-08-24 19:06:30</td>
+                                                 </tr>
+                                                </table>
+                                        </td>
+				</tr>
+			</table>
+		</td>
+	</tr>
+	<tr>
+		<td colSpan="2">
+			<table height="100%" cellSpacing="0" cellPadding="0" width="100%" bgColor="#ffffff" border="0">
+				<tr>
+					<td vAlign="top" width="196" class="sidebar">
 <script lang="javascript">
 function confirm_reset()
 {
@@ -212,8 +212,8 @@ function confirm_reboot()
 	
 </script>
 
-					</td>
-					<td width="828" vAlign="top" class="content">
+					</td>
+					<td width="828" vAlign="top" class="content">
 <table width="100%" cellpadding="0" cellspacing="0" border="0">
 	<tr>
 		<td>
@@ -833,14 +833,13 @@ toggle2('sms_store_tab', 16, 0);
 		</td>
 	</tr>
 </table>
-					</td>
-				</tr>
-			</table>
-		</td>
-	</tr>
-</table>
-
-</body>
-
-</html>
-
+					</td>
+				</tr>
+			</table>
+		</td>
+	</tr>
+</table>
+
+</body>
+
+</html>
