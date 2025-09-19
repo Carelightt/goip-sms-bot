@@ -3,6 +3,7 @@ import os, re, time, json, html, logging, requests, tempfile, random, shutil
 from requests.auth import HTTPBasicAuth
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+from urllib.parse import urlparse, parse_qs, urlencode, urlunparse, urljoin
 
 # ==== AYARLAR ====
 GOIP_URL  = "http://5.11.128.154:5050/default/en_US/tools.html?type=sms_inbox"
@@ -97,14 +98,81 @@ def save_routes(routes:dict):
     _atomic_write(ROUTES_FILE, json.dumps(serializable, ensure_ascii=False, indent=2))
 
 # =============== GOIP ===============
-def fetch_html():
-    r = SESSION.get(GOIP_URL, timeout=(3, 6))
+def fetch_html(url=None):
+    url = url or GOIP_URL
+    r = SESSION.get(url, timeout=(3, 6))
     if r.status_code == 200:
         return r.text
-    log.warning("GoIP HTTP durum kodu: %s", r.status_code)
+    log.warning("GoIP HTTP durum kodu: %s (%s)", r.status_code, url)
     return ""
 
+def detect_max_lines(html_text:str) -> int:
+    nums = [int(x) for x in re.findall(r'Line\s+(\d+)', html_text)]
+    return max(nums) if nums else 16
+
+def _with_query(url:str, **kw):
+    pr = urlparse(url)
+    q = parse_qs(pr.query)
+    for k, v in kw.items():
+        q[str(k)] = [str(v)]
+    nq = urlencode({k: v[0] for k, v in q.items()}, doseq=False)
+    return urlunparse((pr.scheme, pr.netloc, pr.path, pr.params, nq, pr.fragment))
+
+def fetch_line_page(line:int) -> str:
+    """
+    GoIP32 arayüzünde radio butonlar XHR ile içerik getiriyor.
+    Burada bilinen endpoint varyantlarını sırayla deneriz; SMS izi bulunursa döneriz.
+    """
+    base = GOIP_URL
+    tools_url = urljoin(base, "tools.html")
+    candidates = [
+        _with_query(base, type="sms_inbox", line=line),
+        _with_query(base, line=line),
+        _with_query(base, type="sms_inbox", ajax=1, line=line),
+        f"{tools_url}?type=sms_inbox&line={line}",
+        f"{tools_url}?type=sms_inbox&ajax=1&line={line}",
+        urljoin(base, f"ajax_sms_inbox.html?line={line}"),
+        urljoin(base, f"ajax_sms_store.html?line={line}"),
+        urljoin(base, f"sms_inbox.html?line={line}"),
+    ]
+    seen = set()
+    for u in candidates:
+        if u in seen:
+            continue
+        seen.add(u)
+        html_txt = fetch_html(u)
+        if not html_txt:
+            continue
+        if re.search(r'sms=\s*\[', html_txt) or re.search(r'Time:\s*\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\s*From:', html_txt):
+            return html_txt
+    return ""
+
+def iter_inbox_pages():
+    """
+    GoIP16: tek sayfada gömülü JS blokları bulunur.
+    GoIP32: her line için XHR ile içerik gelir -> fetch_line_page ile her line ayrı çekilir.
+    DÖNÜŞ: [(assumed_line:int|None, html:str), ...]
+    """
+    pages = []
+    base_html = fetch_html(GOIP_URL)
+    if not base_html:
+        return pages
+
+    # Ana sayfayı da (GoIP16 uyum) ekle
+    pages.append((None, base_html))
+
+    # Sayfadaki butonlardan max line tespit edip tek tek çek
+    max_lines = detect_max_lines(base_html)
+    for ln in range(1, max_lines + 1):
+        html_txt = fetch_line_page(ln)
+        if html_txt:
+            pages.append((ln, html_txt))
+    return pages
+
 def parse_sms_blocks(html_text:str):
+    """
+    Eski arayüz (GoIP16) için: JS dizisi ve sms_row_insert(...) şeklindeki gömülü veri.
+    """
     results=[]
     for m in re.finditer(r'sms=\s*\[(.*?)\];\s*pos=(\d+);\s*sms_row_insert\(.*?(\d+)\)', html_text, flags=re.S):
         arr_str, pos, line = m.groups()
@@ -126,6 +194,36 @@ def parse_sms_blocks(html_text:str):
             })
     return results
 
+def parse_sms_blocks_fallback_timefrom(html_text:str, assumed_line:int|None=None):
+    """
+    Yeni arayüz (GoIP32) için: "Time:.. From:.. <mesaj>" şeklindeki düz metin/tabela.
+    """
+    txt = re.sub(r'<[^>]+>', '\n', html_text)
+    txt = re.sub(r'\r', '', txt)
+    txt = re.sub(r'[ \t]+', ' ', txt)
+    txt = re.sub(r'\n\s*\n+', '\n', txt).strip()
+
+    results = []
+    patt = re.compile(
+        r'Time:\s*(\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s*From:\s*([^\s]+)\s*(.+?)(?=Time:|\Z)',
+        re.S
+    )
+    for m in patt.finditer(txt):
+        date, num, content = m.groups()
+        results.append({
+            "line": (assumed_line if assumed_line is not None else -1),
+            "date": date.strip(),
+            "num":  num.strip(),
+            "content": content.strip(),
+        })
+    return results
+
+def parse_any_sms_blocks(html_text:str, assumed_line:int|None=None):
+    rows = parse_sms_blocks(html_text)  # GoIP16 yolu
+    if rows:
+        return rows
+    return parse_sms_blocks_fallback_timefrom(html_text, assumed_line=assumed_line)
+
 # =============== HELPERS ===============
 def _norm(s: str) -> str:
     s = s.replace("\r", "").strip()
@@ -136,17 +234,18 @@ def make_key(row) -> str:
     return f"{row['line']}::{_norm(row.get('date',''))}::{_norm(row.get('num',''))}::{_norm(row.get('content',''))}"
 
 def initial_warmup_seen(seen:set):
-    html_txt = fetch_html()
-    if not html_txt:
+    pages = iter_inbox_pages()
+    if not pages:
         log.info("Warm-up: HTML boş geldi, yine de devam.")
         return
-    rows = parse_sms_blocks(html_txt)
     added = 0
-    for row in rows:
-        key = make_key(row)
-        if key not in seen:
-            seen.add(key)
-            added += 1
+    for assumed_line, html_txt in pages:
+        rows = parse_any_sms_blocks(html_txt, assumed_line=assumed_line)
+        for row in rows:
+            key = make_key(row)
+            if key not in seen:
+                seen.add(key)
+                added += 1
     if added:
         save_seen(seen)
     log.info("Warm-up tamam: %d kayıt seen olarak işaretlendi.", added)
@@ -404,23 +503,24 @@ def main():
         try:
             routes = poll_and_handle_updates(routes)
 
-            html_txt = fetch_html()
-            if not html_txt:
+            pages = iter_inbox_pages()
+            if not pages:
                 time.sleep(3)
                 continue
 
-            rows = parse_sms_blocks(html_txt)
             newc = 0
             routed = 0
-            for row in rows:
-                key = make_key(row)
-                if key in seen:
-                    continue
-                sent = deliver_sms_to_routes(row, routes)
-                if sent > 0:
-                    routed += sent
-                seen.add(key)
-                newc += 1
+            for assumed_line, html_txt in pages:
+                rows = parse_any_sms_blocks(html_txt, assumed_line=assumed_line)
+                for row in rows:
+                    key = make_key(row)
+                    if key in seen:
+                        continue
+                    sent = deliver_sms_to_routes(row, routes)
+                    if sent > 0:
+                        routed += sent
+                    seen.add(key)
+                    newc += 1
 
             if newc:
                 save_seen(seen)
