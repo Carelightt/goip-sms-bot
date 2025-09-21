@@ -400,17 +400,26 @@ def handle_command(text:str, chat_id:str, routes:dict, filters:dict):
 
 def poll_and_handle_updates(routes:dict, filters:dict):
     updates = tg_fetch_updates(timeout=10)
-    if not updates: return routes, filters
+    if not updates: 
+        return routes, filters
+
     for u in updates:
         msg = u.get("message") or u.get("channel_post")
-        if not msg: continue
+        if not msg: 
+            continue
         chat = msg.get("chat") or {}
         chat_id = chat.get("id")
-        if not chat_id: continue
+        if not chat_id: 
+            continue
         text = msg.get("text") or ""
-        if not text: continue
+        if not text: 
+            continue
 
-        # >>>>> YETKİ KONTROLÜ (EKLENDİ) <<<<<
+        # ❗ Komut değilse (başında / yoksa) direkt atla
+        if not text.strip().startswith("/"):
+            continue
+
+        # ✅ Komut ise yetki kontrolü
         sender = msg.get("from") or {}
         user_id = sender.get("id")
         if user_id not in ALLOWED_USER_IDS:
@@ -418,6 +427,7 @@ def poll_and_handle_updates(routes:dict, filters:dict):
             continue
 
         routes, filters = handle_command(text, str(chat_id), routes, filters)
+
     return routes, filters
 
 # =============== ROUTING ===============
@@ -506,3 +516,4 @@ def main():
 if __name__ == "__main__":
 
     main()
+
