@@ -203,7 +203,7 @@ def parse_sms_blocks(html_text: str):
         for raw in msgs:
             raw = (raw or "").strip()
             if not raw: continue
-            parts = raw split(",", 2)
+            parts = raw.split(",", 2)
             if len(parts) < 3:
                 parts = raw.split(";", 2)
                 if len(parts) < 3: continue
@@ -504,4 +504,5 @@ def main():
         time.sleep(POLL_INTERVAL)
 
 if __name__ == "__main__":
+
     main()
