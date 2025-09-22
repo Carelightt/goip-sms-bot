@@ -132,12 +132,18 @@ def tg_send_message(chat_id, text, parse_mode="HTML", disable_web_page_preview=T
     return True
 
 def send_tg_formatted(chat_id, line, num, content, date):
+    # 3 ile 7 hane arasındaki sayıları yakala
+    def repl(m):
+        return f"<code>{m.group(0)}</code>"
+
+    highlighted = re.sub(r"\b\d{3,7}\b", repl, html.escape(content))
+
     text = (
         f"🔔 <b>Yeni SMS</b>\n"
         f"📲 Line: <code>{line}</code>\n"
         f"👤 Gönderen: <code>{html.escape(num)}</code>\n"
         f"🕒 {html.escape(date)}\n"
-        f"💬 <code>{html.escape(content)}</code>"
+        f"💬 {highlighted}"
     )
     return tg_send_message(chat_id, text)
 
@@ -544,5 +550,6 @@ def main():
 if __name__ == "__main__":
 
     main()
+
 
 
