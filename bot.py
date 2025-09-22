@@ -1,4 +1,4 @@
-# bot.py — DİNAMİK "From:" TEMELLİ MARKA FİLTRESİ
+# bot.py — DİNAMİK "From:" TEMELLİ MARKA FİLTRESİ + RAPOR
 import os, re, time, json, html, logging, requests, tempfile, random, shutil
 from requests.auth import HTTPBasicAuth
 from requests.adapters import HTTPAdapter
@@ -22,6 +22,7 @@ BASE_DIR      = os.path.dirname(os.path.abspath(__file__))
 SEEN_FILE     = os.path.join(BASE_DIR, "seen.json")
 ROUTES_FILE   = os.path.join(BASE_DIR, "routes.json")    # { "<chat_id>": [1,5,7], ... }
 FILTERS_FILE  = os.path.join(BASE_DIR, "filters.json")   # { "<chat_id>": { "<brand>":[lines] } }
+REPORTS_FILE  = os.path.join(BASE_DIR, "reports.json")   # { "<chat_id>": {"total":int, "brands":{bkey:int}} }
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
 log = logging.getLogger("goip-forwarder")
@@ -103,6 +104,56 @@ def load_filters() -> dict:
 
 def save_filters(flt:dict):
     _atomic_write(FILTERS_FILE, json.dumps(flt, ensure_ascii=False, indent=2))
+
+# ---- RAPOR STATE ----
+def load_reports() -> dict:
+    if os.path.exists(REPORTS_FILE):
+        try:
+            data = json.load(open(REPORTS_FILE, "r", encoding="utf-8")) or {}
+            # normalize keys to str
+            fixed = {}
+            for cid, obj in data.items():
+                scid = str(cid)
+                total = int((obj or {}).get("total", 0))
+                brands = {}
+                for b, n in (obj or {}).get("brands", {}).items():
+                    brands[str(b)] = int(n)
+                fixed[scid] = {"total": total, "brands": brands}
+            return fixed
+        except Exception as e:
+            log.warning("reports.json okunamadı: %s", e)
+            return {}
+    return {}
+
+def save_reports(rep:dict):
+    _atomic_write(REPORTS_FILE, json.dumps(rep, ensure_ascii=False, indent=2))
+
+def incr_report(rep:dict, chat_id:str, brand_key:str|None):
+    chat_id = str(chat_id)
+    rep.setdefault(chat_id, {"total": 0, "brands": {}})
+    rep[chat_id]["total"] = rep[chat_id].get("total", 0) + 1
+    bkey = normalize_brand_key(brand_key) if brand_key else "_genel"
+    rep[chat_id]["brands"][bkey] = rep[chat_id]["brands"].get(bkey, 0) + 1
+    save_reports(rep)
+
+def reset_report(rep:dict, chat_id:str):
+    chat_id = str(chat_id)
+    rep[chat_id] = {"total": 0, "brands": {}}
+    save_reports(rep)
+
+def format_report(rep:dict, chat_id:str) -> str:
+    obj = rep.get(str(chat_id)) or {"total": 0, "brands": {}}
+    total = obj.get("total", 0)
+    brands = obj.get("brands", {})
+    # Markaları çoktan aza sırala
+    items = sorted(brands.items(), key=lambda kv: kv[1], reverse=True)
+    lines = [f"📊 <b>Alınan Toplam SMS :</b> <code>{total}</code>"]
+    for k, n in items:
+        label = "GENEL" if k == "_genel" else k.upper()
+        lines.append(f"{label} : <code>{n}</code>")
+    if len(lines) == 1:
+        lines.append("Henüz kayıt yok.")
+    return "\n".join(lines)
 
 # =============== TELEGRAM CORE ===============
 def tg_api(method, params=None, use_get=False, timeout=20):
@@ -247,6 +298,7 @@ def initial_warmup_seen(seen:set):
 
 # --------- Marka anahtar normalizasyonu ve tespit ----------
 def normalize_brand_key(s: str) -> str:
+    if s is None: return ""
     # Türkçe büyük/küçük normalize + sadece harf/rakam/_ bırak
     s = s.strip()
     s = s.replace("ı","i").replace("İ","i")
@@ -266,7 +318,6 @@ def extract_from_field(row) -> str | None:
         return normalize_brand_key(m.group(1))
     # 2) NUM alfanümerik ise onu marka say (örn GETIR, VAKIFBANK)
     if re.search(r'[A-Za-z]', num):
-        # num içindeki ilk sağlam token
         token = re.findall(r'[A-Za-z0-9_]+', num)
         if token:
             return normalize_brand_key(token[0])
@@ -279,32 +330,43 @@ LINE_RE = re.compile(r'[lL]?(\d+)')
 def parse_line_spec(spec:str):
     return sorted({int(n) for n in LINE_RE.findall(spec or "")})
 
-def handle_command(text:str, chat_id:str, routes:dict, filters:dict):
+def handle_command(text:str, chat_id:str, routes:dict, filters:dict, reports:dict):
     m = CMD_RE.match(text.strip())
-    if not m: return routes, filters
+    if not m: return routes, filters, reports
     cmd, arg = m.groups()
     cmd = cmd.lower()
 
     if cmd == "start":
-        return routes, filters
+        return routes, filters, reports
 
     if cmd == "whereami":
         tg_send_message(chat_id, f"🧭 <b>whereami</b>\n<code>{chat_id}</code>")
-        return routes, filters
+        return routes, filters, reports
+
+    # ---- RAPOR ----
+    if cmd == "rapor":
+        msg = format_report(reports, chat_id)
+        tg_send_message(chat_id, msg)
+        return routes, filters, reports
+
+    if cmd in {"raporsıfırla", "raporsifirla"}:
+        reset_report(reports, chat_id)
+        tg_send_message(chat_id, "✅ Bu grubun raporu sıfırlandı.")
+        return routes, filters, reports
 
     # ---- Genel hat ekleme (filtre yok) ----
     if cmd == "numaraver":
         if not arg:
-            tg_send_message(chat_id, "Kullanım: /numaraver L1 L5 ..."); return routes, filters
+            tg_send_message(chat_id, "Kullanım: /numaraver L1 L5 ..."); return routes, filters, reports
         lines = parse_line_spec(arg)
         if not lines:
-            tg_send_message(chat_id, "Hatalı format. Örn: /numaraver L2 L3"); return routes, filters
+            tg_send_message(chat_id, "Hatalı format. Örn: /numaraver L2 L3"); return routes, filters, reports
         routes.setdefault(str(chat_id), [])
         for ln in lines:
             if ln not in routes[str(chat_id)]: routes[str(chat_id)].append(ln)
         routes[str(chat_id)] = sorted(routes[str(chat_id)]); save_routes(routes)
         tg_send_message(chat_id, f"✅ {', '.join('L'+str(x) for x in routes[str(chat_id)])} verildi ")
-        return routes, filters
+        return routes, filters, reports
 
     # ---- Dinamik marka ekleme: /<brand>ver L1 L2 ...
     def add_brand_filter(brand_raw:str, arg_str:str):
@@ -341,20 +403,20 @@ def handle_command(text:str, chat_id:str, routes:dict, filters:dict):
     if cmd == "filtrever":
         parts = (arg or "").strip().split(None, 1)
         if not parts or not parts[0]:
-            tg_send_message(chat_id, "Kullanım: /filtrever <marka> L1 L2 ..."); return routes, filters
+            tg_send_message(chat_id, "Kullanım: /filtrever <marka> L1 L2 ..."); return routes, filters, reports
         brand = parts[0]; rest = parts[1] if len(parts) > 1 else ""
-        add_brand_filter(brand, rest); return routes, filters
+        add_brand_filter(brand, rest); return routes, filters, reports
 
     # Dinamik: /xxxver
     if cmd.endswith("ver") and len(cmd) > 3:
         brand = cmd[:-3]  # 'getirver' -> 'getir'
-        add_brand_filter(brand, arg or ""); return routes, filters
+        add_brand_filter(brand, arg or ""); return routes, filters, reports
 
     # ---- Kaldır (hat) ----
     if cmd in {"kaldır","kaldir","iptal","sil","remove"}:
         if not arg or not arg.strip():
             tg_send_message(chat_id, "Kullanım: /kaldır L2 L3 veya /kaldır hepsi")
-            return routes, filters
+            return routes, filters, reports
 
         arg_norm = arg.strip().lower()
         # hepsi / hepsini / tüm / tum -> hepsini kaldır
@@ -364,21 +426,17 @@ def handle_command(text:str, chat_id:str, routes:dict, filters:dict):
             save_routes(routes)
             # Bu gruba ait TÜM filtreleri kaldır
             if str(chat_id) in filters:
-                # İstersen tamamen silebilirsin; aşağıdaki satır tüm filtre kaydını kaldırır
                 del filters[str(chat_id)]
-                # Alternatif: sadece listeleri boşaltmak istersen:
-                # for b in list(filters[str(chat_id)].keys()):
-                #     filters[str(chat_id)][b] = []
             save_filters(filters)
 
             tg_send_message(chat_id, "Bütün numaralar bu gruptan kaldırıldı ✅")
-            return routes, filters
+            return routes, filters, reports
 
         # --- tek tek line kaldırma (eski davranış aynen devam) ---
         lines = parse_line_spec(arg)
         if not lines:
             tg_send_message(chat_id, "Hatalı format. Örn: /kaldır L2 L3 veya /kaldır hepsi")
-            return routes, filters
+            return routes, filters, reports
 
         current = set(routes.get(str(chat_id), []))
         removed_any = False
@@ -404,7 +462,7 @@ def handle_command(text:str, chat_id:str, routes:dict, filters:dict):
             tg_send_message(chat_id, msg)
         else:
             tg_send_message(chat_id, " Belirttiğin hatlar zaten bu grupta yok.")
-        return routes, filters
+        return routes, filters, reports
 
     # ---- AKTİF ----
     if cmd == "aktif":
@@ -418,7 +476,7 @@ def handle_command(text:str, chat_id:str, routes:dict, filters:dict):
             parts.append(" Filtreler:\n" + ("\n".join(pr) if pr else "Yok"))
         else:
             parts.append(" Filtreler: Yok")
-        tg_send_message(chat_id, "\n".join(parts)); return routes, filters
+        tg_send_message(chat_id, "\n".join(parts)); return routes, filters, reports
 
     # Yardım
     tg_send_message(chat_id,
@@ -428,14 +486,16 @@ def handle_command(text:str, chat_id:str, routes:dict, filters:dict):
         "• /filtrever <marka> L1 L2 ... → From: <marka> için filtre koy\n"
         "• /<marka>ver L1 L2 ... → kısa yol (örn: /getirver 1, /vakifbankver 15)\n"
         "• /kaldır L1 L5 ... → hatları çıkar (alias: /kaldir, /iptal, /sil, /remove)\n"
-        "• /aktif → aktif hatlar ve filtreleri listele"
+        "• /aktif → aktif hatlar ve filtreleri listele\n"
+        "• /rapor → bu grubun SMS raporu\n"
+        "• /raporsıfırla → bu grubun raporunu sıfırla"
     )
-    return routes, filters
+    return routes, filters, reports
 
-def poll_and_handle_updates(routes:dict, filters:dict):
+def poll_and_handle_updates(routes:dict, filters:dict, reports:dict):
     updates = tg_fetch_updates(timeout=10)
     if not updates: 
-        return routes, filters
+        return routes, filters, reports
 
     for u in updates:
         msg = u.get("message") or u.get("channel_post")
@@ -460,9 +520,9 @@ def poll_and_handle_updates(routes:dict, filters:dict):
             tg_send_message(chat_id, "Hakkınız yoktur. Destek için : @tonymonntnal @CengizzAtay")
             continue
 
-        routes, filters = handle_command(text, str(chat_id), routes, filters)
+        routes, filters, reports = handle_command(text, str(chat_id), routes, filters, reports)
 
-    return routes, filters
+    return routes, filters, reports
 
 # =============== ROUTING ===============
 def _is_allowed_for_chat_line(chat_id:str, line:int, brand_key:str|None, filters:dict) -> bool:
@@ -488,7 +548,7 @@ def detect_brand_key(row) -> str | None:
     b = extract_from_field(row)
     return b
 
-def deliver_sms_to_routes(row, routes:dict, filters:dict):
+def deliver_sms_to_routes(row, routes:dict, filters:dict, reports:dict):
     line = int(row['line'])
     brand_key = detect_brand_key(row)  # ör: "getir", "yemeksepeti", "vakifbank" ...
     sent_total = 0
@@ -496,6 +556,8 @@ def deliver_sms_to_routes(row, routes:dict, filters:dict):
     if not routes:
         if _is_allowed_for_chat_line(str(CHAT_ID), line, brand_key, filters):
             if send_tg_formatted(CHAT_ID, row['line'], row['num'], row['content'], row['date']):
+                # Rapor: fallback CHAT_ID'ye de yazalım
+                incr_report(reports, str(CHAT_ID), brand_key)
                 sent_total += 1
         return sent_total
 
@@ -506,10 +568,12 @@ def deliver_sms_to_routes(row, routes:dict, filters:dict):
             continue
         ok = send_tg_formatted(chat_id, row['line'], row['num'], row['content'], row['date'])
         if ok:
+            incr_report(reports, chat_id, brand_key)
             sent_total += 1
         else:
             time.sleep(0.3 + random.random()*0.5)
             if send_tg_formatted(chat_id, row['line'], row['num'], row['content'], row['date']):
+                incr_report(reports, chat_id, brand_key)
                 sent_total += 1
     return sent_total
 
@@ -519,12 +583,13 @@ def main():
     seen    = load_seen()
     routes  = load_routes()
     filters = load_filters()
+    reports = load_reports()
     log.info("Başladı, görülen %d | aktif grup: %d | filtreli grup: %d",
              len(seen), len(routes), len(filters))
     initial_warmup_seen(seen)
     while True:
         try:
-            routes, filters = poll_and_handle_updates(routes, filters)
+            routes, filters, reports = poll_and_handle_updates(routes, filters, reports)
             html_txt = fetch_html()
             if not html_txt:
                 time.sleep(3); continue
@@ -533,7 +598,7 @@ def main():
             for row in rows:
                 key = make_key(row)
                 if key in seen: continue
-                sent = deliver_sms_to_routes(row, routes, filters)
+                sent = deliver_sms_to_routes(row, routes, filters, reports)
                 if sent > 0: routed += sent
                 seen.add(key); newc += 1
             if newc:
@@ -548,8 +613,4 @@ def main():
         time.sleep(POLL_INTERVAL)
 
 if __name__ == "__main__":
-
     main()
-
-
-
