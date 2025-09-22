@@ -346,16 +346,42 @@ def handle_command(text:str, chat_id:str, routes:dict, filters:dict):
 
     # ---- Kaldır (hat) ----
     if cmd in {"kaldır","kaldir","iptal","sil","remove"}:
-        if not arg:
-            tg_send_message(chat_id, "Kullanım: /kaldır L2 L3"); return routes, filters
+        if not arg or not arg.strip():
+            tg_send_message(chat_id, "Kullanım: /kaldır L2 L3 veya /kaldır hepsi")
+            return routes, filters
+
+        arg_norm = arg.strip().lower()
+        # hepsi / hepsini / tüm / tum -> hepsini kaldır
+        if arg_norm in {"hepsi", "hepsini", "tüm", "tum"}:
+            # Tüm line’ları kaldır
+            routes[str(chat_id)] = []
+            save_routes(routes)
+            # Bu gruba ait TÜM filtreleri kaldır
+            if str(chat_id) in filters:
+                # İstersen tamamen silebilirsin; aşağıdaki satır tüm filtre kaydını kaldırır
+                del filters[str(chat_id)]
+                # Alternatif: sadece listeleri boşaltmak istersen:
+                # for b in list(filters[str(chat_id)].keys()):
+                #     filters[str(chat_id)][b] = []
+            save_filters(filters)
+
+            tg_send_message(chat_id, "Bütün numaralar bu gruptan kaldırıldı ✅")
+            return routes, filters
+
+        # --- tek tek line kaldırma (eski davranış aynen devam) ---
         lines = parse_line_spec(arg)
         if not lines:
-            tg_send_message(chat_id, "Hatalı format. Örn: /kaldır L2 L3"); return routes, filters
+            tg_send_message(chat_id, "Hatalı format. Örn: /kaldır L2 L3 veya /kaldır hepsi")
+            return routes, filters
+
         current = set(routes.get(str(chat_id), []))
         removed_any = False
         for ln in lines:
-            if ln in current: current.remove(ln); removed_any = True
-        routes[str(chat_id)] = sorted(current); save_routes(routes)
+            if ln in current:
+                current.remove(ln)
+                removed_any = True
+        routes[str(chat_id)] = sorted(current)
+        save_routes(routes)
 
         # Filtrelerden de bu hatları temizle
         if str(chat_id) in filters:
@@ -365,8 +391,10 @@ def handle_command(text:str, chat_id:str, routes:dict, filters:dict):
             save_filters(filters)
 
         if removed_any:
-            msg = f"❌ Kaldırıldı. Kalan Line'lar: <code>{', '.join('L'+str(x) for x in current)}</code>" if current \
-                  else "❌ Tüm hatlar kaldırıldı. Bu gruba artık SMS düşmeyecek."
+            msg = (
+                f"❌ Kaldırıldı. Kalan Line'lar: <code>{', '.join('L'+str(x) for x in current)}</code>"
+                if current else "❌ Tüm hatlar kaldırıldı. Bu gruba artık SMS düşmeyecek."
+            )
             tg_send_message(chat_id, msg)
         else:
             tg_send_message(chat_id, " Belirttiğin hatlar zaten bu grupta yok.")
@@ -516,4 +544,5 @@ def main():
 if __name__ == "__main__":
 
     main()
+
 
