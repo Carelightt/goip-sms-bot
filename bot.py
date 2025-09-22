@@ -147,7 +147,7 @@ def format_report(rep:dict, chat_id:str) -> str:
     brands = obj.get("brands", {})
     # Markaları çoktan aza sırala
     items = sorted(brands.items(), key=lambda kv: kv[1], reverse=True)
-    lines = [f"📊 <b>Alınan Toplam SMS :</b> <code>{total}</code>"]
+    lines = [f" <b>Alınan Toplam SMS :</b> <code>{total}</code>"]
     for k, n in items:
         label = "GENEL" if k == "_genel" else k.upper()
         lines.append(f"{label} : <code>{n}</code>")
@@ -396,7 +396,7 @@ def handle_command(text:str, chat_id:str, routes:dict, filters:dict, reports:dic
         tg_send_message(chat_id,
             f"✅ <b>{brand_raw}</b> numarası eklendi: "
             f"<code>{', '.join('L'+str(x) for x in lines)}</code>\n"
-            f"Bu gruba <b>sadece {brand_raw}</b> (From:) SMS’leri düşecek."
+            f"Bu gruba <b>sadece {brand_raw}</b>  SMS’leri düşecek."
         )
 
     # Genel komut: /filtrever <marka> L1 L2 ...
@@ -614,3 +614,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
