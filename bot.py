@@ -5,7 +5,7 @@ from requests.auth import HTTPBasicAuth
 from requests.adapters import HTTPAdapter
 
 from urllib3.util import Retry
-==== AYARLAR ====
+#==== AYARLAR ====
 GOIP_URL  = "http://5.11.128.154:5050/default/en_US/sms.html?type=sms_inbox"
 
 GOIP_USER = "sms"
@@ -16,10 +16,10 @@ BOT_TOKEN = "8299573802:AAFrTWxpx2JuJgv2vsVZ4r2NMTT4B16KMZg"
 CHAT_ID   = -1003098321304  # routes.json boşsa fallback
 POLL_INTERVAL = 10
 
->>>>> YETKİLİ KULLANICILAR (EKLENDİ) <<<<<
+#>>>>> YETKİLİ KULLANICILAR (EKLENDİ) <<<<<
 ALLOWED_USER_IDS = {8450766241, 6672759317}
 
-Dosya yolları
+#Dosya yolları
 BASE_DIR      = os.path.dirname(os.path.abspath(__file__)) # Düzeltme: file yerine __file__
 
 SEEN_FILE     = os.path.join(BASE_DIR, "seen.json")
@@ -32,7 +32,7 @@ REPORTS_FILE  = os.path.join(BASE_DIR, "reports.json")   # { "<chat_id>": {"tota
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
 
 log = logging.getLogger("goip-forwarder")
----- HTTP session with retry/backoff ----
+#---- HTTP session with retry/backoff ----
 def make_session() -> requests.Session:
 
 s = requests.Session()
@@ -155,7 +155,7 @@ return {}
 def save_filters(flt:dict):
 
 _atomic_write(FILTERS_FILE, json.dumps(flt, ensure_ascii=False, indent=2))
----- RAPOR STATE ----
+#---- RAPOR STATE ----
 def load_reports() -> dict:
 
 if os.path.exists(REPORTS_FILE):
@@ -239,7 +239,7 @@ if len(lines) == 1:
 lines.append("Henüz kayıt yok.")
 
 return "\n".join(lines)
-=============== TELEGRAM CORE ===============
+#=============== TELEGRAM CORE ===============
 def tg_api(method, params=None, use_get=False, timeout=20):
 
 url = f"https://api.telegram.org/bot{BOT_TOKEN}/{method}"
@@ -299,7 +299,7 @@ text = (
     f"💬 {highlighted}"
 )
 return tg_send_message(chat_id, text)
----- Long-polling updates ----
+#---- Long-polling updates ----
 UPD_OFFSET = 0
 
 def tg_fetch_updates(timeout=20):
@@ -337,7 +337,7 @@ results = data.get("result", [])
 if results: UPD_OFFSET = results[-1]["update_id"] + 1
 
 return results
-=============== GOIP ===============
+#=============== GOIP ===============
 def fetch_html():
 
 r = SESSION.get(GOIP_URL, timeout=(3, 6))
@@ -403,7 +403,7 @@ for m in sms_blocks:
         })
 log.info("Parser: %d SMS satırı çıkarıldı.", len(results))
 return results
-=============== HELPERS ===============
+#=============== HELPERS ===============
 def _norm(s: str) -> str:
 
 s = s.replace("\r", "").strip()
@@ -437,7 +437,7 @@ seen.add(key); added += 1
 if added: save_seen(seen)
 
 log.info("Warm-up tamam: %d kayıt seen olarak işaretlendi.", added)
---------- Marka anahtar normalizasyonu ve tespit ----------
+#--------- Marka anahtar normalizasyonu ve tespit ----------
 # Eklenen özel marka eşlemeleri
 _SPECIAL_BRAND_MAP = {
     # Google (From:600653000000)
@@ -517,7 +517,7 @@ if raw_brand.upper() == "FACEBOOK":
 
 # Eşleşme yoksa, normal marka tespiti ve normalizasyonu yap
 return normalize_brand_key(raw_brand)
-=============== KOMUTLAR ===============
+#=============== KOMUTLAR ===============
 CMD_RE  = re.compile(r'^/([^\s@]+)(?:@\w+)?(?:\s+(.*))?$')
 
 LINE_RE = re.compile(r'[lL]?(\d+)')
@@ -721,7 +721,7 @@ for u in updates:
     routes, filters, reports = handle_command(text, str(chat_id), routes, filters, reports)
 
 return routes, filters, reports
-=============== ROUTING ===============
+#=============== ROUTING ===============
 def _is_allowed_for_chat_line(chat_id:str, line:int, brand_key:str|None, filters:dict) -> bool:
 
 """
@@ -782,7 +782,7 @@ for chat_id, lines in routes.items():
             incr_report(reports, chat_id, brand_key)
             sent_total += 1
 return sent_total
-=============== MAIN LOOP ===============
+#=============== MAIN LOOP ===============
 def main():
 
 tg_delete_webhook(drop=False)
