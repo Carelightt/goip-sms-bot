@@ -184,13 +184,20 @@ def tg_send_message(chat_id, text, parse_mode="HTML", disable_web_page_preview=T
 def send_tg_formatted(chat_id, line, num, content, date):
     # 3 ile 7 hane arasındaki sayıları yakala
     def repl(m):
-        return f"{m.group(0)}"
+        return f"<b>{m.group(0)}</b>" # Kodu kalın yap
 
-    highlighted = re.sub(r"\b\d{3,7}\b", repl, html.escape(content))
+    # < ve > karakterlerini HTML'e uygun hale getir
+    content_escaped = html.escape(content)
+    # Highlight (kalınlaştırma) sadece SMS içeriği üzerinde çalışır
+    highlighted = re.sub(r"\b\d{3,7}\b", repl, content_escaped)
+    
+    # Num alanını da kaçır
+    num_escaped = html.escape(num)
+    
     text = (
         f"🔔 <b>Yeni SMS</b>\n"
         f"📲 Line: <code>{line}</code>\n"
-        f"👤 Gönderen: <code>{html.escape(num)}</code>\n"
+        f"👤 Gönderen: <code>{num_escaped}</code>\n"
         f"🕒 {html.escape(date)}\n"
         f"💬 {highlighted}"
     )
@@ -308,6 +315,8 @@ _SPECIAL_BRAND_MAP = {
     "facebook": "facebook",
     # Facebook (From:+320335320002)
     "+320335320002": "facebook",
+    # TT Mobil (Örnek eşleme: TT Mobil sadece alfanümerik olarak yakalanır)
+    # "ttmobil": "ttmobil",
 }
 
 def normalize_brand_key(s: str) -> str:
@@ -319,25 +328,36 @@ def normalize_brand_key(s: str) -> str:
     s = re.sub(r"[^a-z0-9_]+", "", s)  # boşluk, tire vb. at
     return s
 
+# 🚨 DÜZELTME BURADA 🚨
 def extract_from_field(row) -> str | None:
     """
     İçerikten 'From: XXX' alanını yakala. Yoksa num alanından bir marka çıkar.
+    
+    Num alanı sadece rakam da içerse (600653000000 gibi), onu döndürür
+    ki _SPECIAL_BRAND_MAP ile eşleşebilsin.
     """
     content = row.get("content","")
     num = row.get("num","")
 
-    # 1) CONTENT içinde From: X
+    # 1) CONTENT içinde From: X (Bu çok nadir)
     m = re.search(r'(?i)\bfrom\s*[:=]\s*([^\s,;]+)', content)
     if m:
         return m.group(1).strip() # İlk ham From: değerini döndür (normalize edilmeden önce)
 
-    # 2) NUM alfanümerik ise onu marka say (örn GETIR, VAKIFBANK)
-    if re.search(r'[A-Za-z]', num):
-        token = re.findall(r'[A-Za-z0-9_]+', num)
-        if token:
-            return token[0].strip() # İlk ham Num değerini döndür
+    # 2) NUM alanında bir değer varsa, bunu gönderici olarak kullan.
+    #    GoIP'den gelen alfanümerik marka adlarını (TT Mobil, GETIR) veya
+    #    sayısal kodları (600653000000, +320335320002) yakalamak için.
+    if num:
+        # Alfanümerik ise (TT Mobil) harf/rakam/alt çizgi ile sınırlı parçayı al.
+        if re.search(r'[A-Za-z]', num):
+            token = re.findall(r'[A-Za-z0-9_]+', num)
+            return token[0].strip() if token else num.strip() # token yoksa tüm num'u döndür.
+        
+        # Sadece rakam veya işaret içeriyorsa (600653000000, +320335320002)
+        return num.strip() # Num içeriğini olduğu gibi döndür (MAP'e gitsin)
     
     return None
+# 🚨 DÜZELTME SONU 🚨
 
 def detect_brand_key(row) -> str | None:
     """
@@ -347,15 +367,16 @@ def detect_brand_key(row) -> str | None:
     if not raw_brand:
         return None
 
-    # Önce özel eşlemelere bak
-    # Eşleşen bir anahtar varsa (normalize edilmemiş haliyle), eşleşen marka adını döndür
-    normalized_raw = raw_brand.lower()
-    if normalized_raw in _SPECIAL_BRAND_MAP:
-        return _SPECIAL_BRAND_MAP[normalized_raw]
+    # Önce özel eşlemelere bak (raw_brand'in kendisi ile kontrol)
+    # Örn: "600653000000" -> "google"
+    if raw_brand in _SPECIAL_BRAND_MAP:
+        return _SPECIAL_BRAND_MAP[raw_brand]
 
-    # Facebook'un 'FACEBOOK' adını direkt kontrol etmek için:
-    if raw_brand.upper() == "FACEBOOK":
-        return "facebook"
+    # Facebook'un 'FACEBOOK' adını direkt kontrol etmek için (büyük/küçük harf duyarsız)
+    # Not: raw_brand'in tamamı FACEBOOK ise, 'facebook' döndürülür
+    normalized_raw = raw_brand.lower()
+    if normalized_raw in _SPECIAL_BRAND_MAP: # Örn: "facebook" -> "facebook"
+        return _SPECIAL_BRAND_MAP[normalized_raw]
 
     # Eşleşme yoksa, normal marka tespiti ve normalizasyonu yap
     return normalize_brand_key(raw_brand)
@@ -617,7 +638,7 @@ def deliver_sms_to_routes(row, routes:dict, filters:dict, reports:dict):
 #=============== MAIN LOOP ===============
 def main():
     tg_delete_webhook(drop=False)
-    seen    = load_seen()
+    seen  = load_seen()
     routes  = load_routes()
     filters = load_filters()
     reports = load_reports()
