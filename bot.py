@@ -74,86 +74,53 @@ def _atomic_write(path:str, data_text:str):
 
 # --------------- STATE ---------------
 def load_seen():
-
-if os.path.exists(SEEN_FILE):
-
-try: return set(json.load(open(SEEN_FILE, "r", encoding="utf-8")))
-
-except Exception: return set()
-
-return set()
+    if os.path.exists(SEEN_FILE):
+        try: return set(json.load(open(SEEN_FILE, "r", encoding="utf-8")))
+        except Exception: return set()
+    return set()
 
 def save_seen(seen:set):
+    _atomic_write(SEEN_FILE, json.dumps(list(seen), ensure_ascii=False))
 
-_atomic_write(SEEN_FILE, json.dumps(list(seen), ensure_ascii=False))
 def load_routes() -> dict:
+    if os.path.exists(ROUTES_FILE):
+        try:
+            data = json.load(open(ROUTES_FILE, "r", encoding="utf-8"))
+            fixed = {}
+            for k, v in (data or {}).items():
+                cid = str(k)
+                try: cid = str(int(k))
+                except Exception: pass
+                lines = sorted({int(x) for x in (v or []) if isinstance(x, (int,str)) and str(x).isdigit()})
+                fixed[cid] = lines
+            return fixed
+        except Exception as e:
+            log.warning("routes.json okunamadı: %s", e)
+            return {}
+    return {}
 
-if os.path.exists(ROUTES_FILE):
-
-try:
-
-data = json.load(open(ROUTES_FILE, "r", encoding="utf-8"))
-
-fixed = {}
-
-for k, v in (data or {}).items():
-
-cid = str(k)
-
-try: cid = str(int(k))
-
-except Exception: pass
-
-lines = sorted({int(x) for x in (v or []) if isinstance(x, (int,str)) and str(x).isdigit()})
-
-fixed[cid] = lines
-
-return fixed
-
-except Exception as e:
-
-log.warning("routes.json okunamadı: %s", e)
-
-return {}
-
-return {}
 def save_routes(routes:dict):
+    _atomic_write(ROUTES_FILE, json.dumps(routes, ensure_ascii=False, indent=2))
 
-_atomic_write(ROUTES_FILE, json.dumps(routes, ensure_ascii=False, indent=2))
 def load_filters() -> dict:
+    if os.path.exists(FILTERS_FILE):
+        try:
+            data = json.load(open(FILTERS_FILE, "r", encoding="utf-8")) or {}
+            fixed = {}
+            for cid, brands in data.items():
+                cid = str(cid)
+                fixed[cid] = {}
+                for b, arr in (brands or {}).items():
+                    bkey = normalize_brand_key(str(b))
+                    fixed[cid][bkey] = sorted({int(x) for x in (arr or []) if str(x).isdigit()})
+            return fixed
+        except Exception as e:
+            log.warning("filters.json okunamadı: %s", e)
+            return {}
+    return {}
 
-if os.path.exists(FILTERS_FILE):
-
-try:
-
-data = json.load(open(FILTERS_FILE, "r", encoding="utf-8")) or {}
-
-fixed = {}
-
-for cid, brands in data.items():
-
-cid = str(cid)
-
-fixed[cid] = {}
-
-for b, arr in (brands or {}).items():
-
-bkey = normalize_brand_key(str(b))
-
-fixed[cid][bkey] = sorted({int(x) for x in (arr or []) if str(x).isdigit()})
-
-return fixed
-
-except Exception as e:
-
-log.warning("filters.json okunamadı: %s", e)
-
-return {}
-
-return {}
 def save_filters(flt:dict):
-
-_atomic_write(FILTERS_FILE, json.dumps(flt, ensure_ascii=False, indent=2))
+    _atomic_write(FILTERS_FILE, json.dumps(flt, ensure_ascii=False, indent=2))
 #---- RAPOR STATE ----
 def load_reports() -> dict:
 
@@ -849,4 +816,5 @@ log.warning("Hata: %s", e)
 time.sleep(POLL_INTERVAL)
 if __name__ == "__main__": # Düzeltme: name == "main" yerine __name__ == "__main__"
     main()
+
 
