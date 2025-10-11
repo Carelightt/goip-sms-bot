@@ -34,32 +34,31 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(
 log = logging.getLogger("goip-forwarder")
 #---- HTTP session with retry/backoff ----
 def make_session() -> requests.Session:
+    s = requests.Session()
 
-s = requests.Session()
+    s.auth = HTTPBasicAuth(GOIP_USER, GOIP_PASS)
 
-s.auth = HTTPBasicAuth(GOIP_USER, GOIP_PASS)
+    s.headers.update({"User-Agent": "GoIP-SMS-Forwarder/1.0"})
 
-s.headers.update({"User-Agent": "GoIP-SMS-Forwarder/1.0"})
+    retry = Retry(
 
-retry = Retry(
+        total=3, connect=3, read=3,
 
-total=3, connect=3, read=3,
+        backoff_factor=0.6,
 
-backoff_factor=0.6,
+        status_forcelist=[502, 503, 504],
 
-status_forcelist=[502, 503, 504],
+        allowed_methods=["GET", "POST"],
 
-allowed_methods=["GET", "POST"],
+        raise_on_status=False, respect_retry_after_header=True,
 
-raise_on_status=False, respect_retry_after_header=True,
+    )
 
-)
+    adapter = HTTPAdapter(max_retries=retry, pool_connections=4, pool_maxsize=8)
 
-adapter = HTTPAdapter(max_retries=retry, pool_connections=4, pool_maxsize=8)
+    s.mount("http://", adapter); s.mount("https://", adapter)
 
-s.mount("http://", adapter); s.mount("https://", adapter)
-
-return s
+    return s
 SESSION = make_session()
 
 # Hata düzeltme: atomik_write'ı düzgün bir yere taşıyalım
@@ -850,3 +849,4 @@ log.warning("Hata: %s", e)
 time.sleep(POLL_INTERVAL)
 if __name__ == "__main__": # Düzeltme: name == "main" yerine __name__ == "__main__"
     main()
+
