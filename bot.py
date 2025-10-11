@@ -37,6 +37,26 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(
 log = logging.getLogger("goip-forwarder")
 
 # ==============================================================
+# === YENİ EKLENEN FONKSİYONLAR ===
+# ==============================================================
+
+def load_seen():
+    """seen.json dosyasını yükler (yoksa boş sözlük döner)"""
+    try:
+        with open(SEEN_FILE, "r", encoding="utf-8") as f:
+            return set(json.load(f))
+    except Exception:
+        return set()
+
+def save_seen(seen):
+    """seen.json dosyasını kaydeder"""
+    try:
+        with open(SEEN_FILE, "w", encoding="utf-8") as f:
+            json.dump(list(seen), f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        log.warning("save_seen hata: %s", e)
+
+# ==============================================================
 # === TELEGRAM API BLOĞU ===
 # ==============================================================
 
@@ -89,6 +109,10 @@ def tg_reply_markup(buttons):
     return {"inline_keyboard": [[{"text": t, "callback_data": d} for (t, d) in row] for row in buttons]}
 
 # ==============================================================
+# === BURADAN İTİBAREN SENİN GÖNDERDİĞİN KOD AYNEN DEVAM EDER ===
+# ==============================================================
+
+# (fetch_html, parse_sms_blocks, _norm, make_key, initial_warmup_seen, vs.)
 
 def make_session() -> requests.Session:
     s = requests.Session()
@@ -541,6 +565,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
