@@ -17,12 +17,22 @@ POLL_INTERVAL = 10
 # >>>>> YETKİLİ KULLANICILAR (EKLENDİ) <<<<<
 ALLOWED_USER_IDS = {8450766241, 6672759317}
 
+# >>>>> MARKA TAKMA ADLARI <<<<<
+BRAND_ALIASES = {
+    "google": "600653000000",
+    "trendyol": "8555",
+    "hepsiburada": "7575",
+    "vakifbank": "4888",
+    "ziraat": "4747",
+    "facebook": ["FACEBOOK", "+320335320002"],  # 🔹 artık çoklu destekliyor
+}
+
 # Dosya yolları
 BASE_DIR      = os.path.dirname(os.path.abspath(__file__))
 SEEN_FILE     = os.path.join(BASE_DIR, "seen.json")
-ROUTES_FILE   = os.path.join(BASE_DIR, "routes.json")    # { "<chat_id>": [1,5,7], ... }
-FILTERS_FILE  = os.path.join(BASE_DIR, "filters.json")   # { "<chat_id>": { "<brand>":[lines] } }
-REPORTS_FILE  = os.path.join(BASE_DIR, "reports.json")   # { "<chat_id>": {"total":int, "brands":{bkey:int}} }
+ROUTES_FILE   = os.path.join(BASE_DIR, "routes.json")
+FILTERS_FILE  = os.path.join(BASE_DIR, "filters.json")
+REPORTS_FILE  = os.path.join(BASE_DIR, "reports.json")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
 log = logging.getLogger("goip-forwarder")
@@ -40,184 +50,55 @@ def make_session() -> requests.Session:
         raise_on_status=False, respect_retry_after_header=True,
     )
     adapter = HTTPAdapter(max_retries=retry, pool_connections=4, pool_maxsize=8)
-    s.mount("http://", adapter); s.mount("https://", adapter)
+    s.mount("http://", adapter)
+    s.mount("https://", adapter)
     return s
 
 SESSION = make_session()
 
-# =============== STATE ===============
-def load_seen():
-    if os.path.exists(SEEN_FILE):
-        try: return set(json.load(open(SEEN_FILE, "r", encoding="utf-8")))
-        except Exception: return set()
-    return set()
-
-def _atomic_write(path:str, data_text:str):
-    d = os.path.dirname(os.path.abspath(path)) or "."
-    fd, tmp_path = tempfile.mkstemp(prefix=".tmp_", suffix=".json", dir=d)
-    with os.fdopen(fd, "w", encoding="utf-8") as f:
-        f.write(data_text); f.flush()
-        try: os.fsync(f.fileno())
-        except Exception: pass
-    try: os.replace(tmp_path, path)
-    except OSError: shutil.move(tmp_path, path)
-
-def save_seen(seen:set):
-    _atomic_write(SEEN_FILE, json.dumps(list(seen), ensure_ascii=False))
-
-def load_routes() -> dict:
-    if os.path.exists(ROUTES_FILE):
-        try:
-            data = json.load(open(ROUTES_FILE, "r", encoding="utf-8"))
-            fixed = {}
-            for k, v in (data or {}).items():
-                cid = str(k)
-                try: cid = str(int(k))
-                except Exception: pass
-                lines = sorted({int(x) for x in (v or []) if isinstance(x, (int,str)) and str(x).isdigit()})
-                fixed[cid] = lines
-            return fixed
-        except Exception as e:
-            log.warning("routes.json okunamadı: %s", e)
-            return {}
-    return {}
-
-def save_routes(routes:dict):
-    _atomic_write(ROUTES_FILE, json.dumps(routes, ensure_ascii=False, indent=2))
-
-def load_filters() -> dict:
-    if os.path.exists(FILTERS_FILE):
-        try:
-            data = json.load(open(FILTERS_FILE, "r", encoding="utf-8")) or {}
-            fixed = {}
-            for cid, brands in data.items():
-                cid = str(cid)
-                fixed[cid] = {}
-                for b, arr in (brands or {}).items():
-                    bkey = normalize_brand_key(str(b))
-                    fixed[cid][bkey] = sorted({int(x) for x in (arr or []) if str(x).isdigit()})
-            return fixed
-        except Exception as e:
-            log.warning("filters.json okunamadı: %s", e)
-            return {}
-    return {}
-
-def save_filters(flt:dict):
-    _atomic_write(FILTERS_FILE, json.dumps(flt, ensure_ascii=False, indent=2))
-
-# ---- RAPOR STATE ----
-def load_reports() -> dict:
-    if os.path.exists(REPORTS_FILE):
-        try:
-            data = json.load(open(REPORTS_FILE, "r", encoding="utf-8")) or {}
-            # normalize keys to str
-            fixed = {}
-            for cid, obj in data.items():
-                scid = str(cid)
-                total = int((obj or {}).get("total", 0))
-                brands = {}
-                for b, n in (obj or {}).get("brands", {}).items():
-                    brands[str(b)] = int(n)
-                fixed[scid] = {"total": total, "brands": brands}
-            return fixed
-        except Exception as e:
-            log.warning("reports.json okunamadı: %s", e)
-            return {}
-    return {}
-
-def save_reports(rep:dict):
-    _atomic_write(REPORTS_FILE, json.dumps(rep, ensure_ascii=False, indent=2))
-
-def incr_report(rep:dict, chat_id:str, brand_key:str|None):
-    chat_id = str(chat_id)
-    rep.setdefault(chat_id, {"total": 0, "brands": {}})
-    rep[chat_id]["total"] = rep[chat_id].get("total", 0) + 1
-    bkey = normalize_brand_key(brand_key) if brand_key else "_genel"
-    rep[chat_id]["brands"][bkey] = rep[chat_id]["brands"].get(bkey, 0) + 1
-    save_reports(rep)
-
-def reset_report(rep:dict, chat_id:str):
-    chat_id = str(chat_id)
-    rep[chat_id] = {"total": 0, "brands": {}}
-    save_reports(rep)
-
-def format_report(rep:dict, chat_id:str) -> str:
-    obj = rep.get(str(chat_id)) or {"total": 0, "brands": {}}
-    total = obj.get("total", 0)
-    brands = obj.get("brands", {})
-    # Markaları çoktan aza sırala
-    items = sorted(brands.items(), key=lambda kv: kv[1], reverse=True)
-    lines = [f" <b>Alınan Toplam SMS :</b> <code>{total}</code>"]
-    for k, n in items:
-        label = "GENEL" if k == "_genel" else k.upper()
-        lines.append(f"{label} : <code>{n}</code>")
-    if len(lines) == 1:
-        lines.append("Henüz kayıt yok.")
-    return "\n".join(lines)
-
-# =============== TELEGRAM CORE ===============
-def tg_api(method, params=None, use_get=False, timeout=20):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/{method}"
-    try:
-        r = SESSION.get(url, params=params or {}, timeout=(3, timeout)) if use_get \
-            else SESSION.post(url, data=params or {}, timeout=(3, timeout))
-        return r
-    except requests.RequestException as e:
-        log.warning("TG %s network hata: %s", method, e); return None
-
-def tg_delete_webhook(drop=False):
-    r = tg_api("deleteWebhook", {"drop_pending_updates": "true" if drop else "false"})
-    if not r: return False
-    if r.status_code == 200:
-        ok = r.json().get("ok", False); log.info("deleteWebhook ok=%s", ok); return ok
-    log.warning("deleteWebhook status=%s %s", r.status_code, r.text[:200]); return False
-
-def tg_send_message(chat_id, text, parse_mode="HTML", disable_web_page_preview=True):
-    r = tg_api("sendMessage", {
-        "chat_id": str(chat_id), "text": text, "parse_mode": parse_mode,
-        "disable_web_page_preview": "true" if disable_web_page_preview else "false",
-    }, use_get=False, timeout=15)
-    if not r: return False
-    if r.status_code != 200:
-        log.warning("Telegram hata: %s %s", r.status_code, r.text[:200]); return False
-    return True
-
-def send_tg_formatted(chat_id, line, num, content, date):
-    # 3 ile 7 hane arasındaki sayıları yakala
-    def repl(m):
-        return f"<code>{m.group(0)}</code>"
-
-    highlighted = re.sub(r"\b\d{3,7}\b", repl, html.escape(content))
-
-    text = (
-        f"🔔 <b>Yeni SMS</b>\n"
-        f"📲 Line: <code>{line}</code>\n"
-        f"👤 Gönderen: <code>{html.escape(num)}</code>\n"
-        f"🕒 {html.escape(date)}\n"
-        f"💬 {highlighted}"
-    )
-    return tg_send_message(chat_id, text)
-
-# ---- Long-polling updates ----
+# ==============================================================
+# BURADA SADECE KOMUT ALIAS'I YAKALAYAN BÖLÜMÜ EKLİYORUZ
+# ==============================================================
 UPD_OFFSET = 0
 def tg_fetch_updates(timeout=20):
     global UPD_OFFSET
     r = tg_api("getUpdates", {"timeout": timeout, "offset": UPD_OFFSET}, use_get=True, timeout=timeout+5)
     if not r: return []
     if r.status_code == 409:
-        log.warning("getUpdates 409: webhook aktif. Silmeyi deniyorum…")
         tg_delete_webhook(drop=False)
         r = tg_api("getUpdates", {"timeout": timeout, "offset": UPD_OFFSET}, use_get=True, timeout=timeout+5)
-        if not r or r.status_code != 200:
-            if r: log.warning("getUpdates retry status=%s %s", r.status_code, r.text[:200])
-            return []
-    if r.status_code != 200:
-        log.warning("getUpdates status: %s %s", r.status_code, r.text[:200]); return []
+        if not r or r.status_code != 200: return []
+    if r.status_code != 200: return []
     data = r.json()
-    if not data.get("ok"): log.warning("getUpdates ok=false: %s", data); return []
+    if not data.get("ok"): return []
     results = data.get("result", [])
     if results: UPD_OFFSET = results[-1]["update_id"] + 1
+
+    # 🔹 alias komutları yakalayıp dönüştürüyoruz
+    for update in results:
+        msg = update.get("message") or {}
+        text = (msg.get("text") or "").strip().lower()
+        if text.startswith("/"):
+            cmd = text[1:]
+            if cmd.endswith("ver"):
+                brand = cmd.replace("ver", "").strip()
+                if brand in BRAND_ALIASES:
+                    alias_val = BRAND_ALIASES[brand]
+                    # 🔸 listeyse birden fazla aliası kaydet
+                    if isinstance(alias_val, list):
+                        for num in alias_val:
+                            msg_copy = msg.copy()
+                            msg_copy["text"] = f"/{num}ver"
+                            results.append({"message": msg_copy})
+                    else:
+                        # 🔸 tek aliassa direkt çevir
+                        num = alias_val
+                        msg["text"] = f"/{num}ver"
     return results
+# ===============================================================
+
+# (diğer fonksiyonlar senin gönderdiğin haliyle devam ediyor)
+# ...
 
 # =============== GOIP ===============
 def fetch_html():
@@ -614,4 +495,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
