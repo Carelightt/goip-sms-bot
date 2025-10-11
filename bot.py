@@ -1,4 +1,7 @@
-# bot.py — DİNAMİK "From:" TEMELLİ MARKA FİLTRESİ + RAPOR
+# ==============================================================
+# bot.py — DİNAMİK "From:" TEMELLİ MARKA FİLTRESİ + RAPOR + TELEGRAM API BLOĞU TAM
+# ==============================================================
+
 import os, re, time, json, html, logging, requests, tempfile, random, shutil
 from requests.auth import HTTPBasicAuth
 from requests.adapters import HTTPAdapter
@@ -13,21 +16,17 @@ BOT_TOKEN = "8299573802:AAFrTWxpx2JuJgv2vsVZ4r2NMTT4B16KMZg"
 CHAT_ID   = -1003098321304  # routes.json boşsa fallback
 
 POLL_INTERVAL = 10
-
-# >>>>> YETKİLİ KULLANICILAR (EKLENDİ) <<<<<
 ALLOWED_USER_IDS = {8450766241, 6672759317}
 
-# >>>>> MARKA TAKMA ADLARI <<<<<
 BRAND_ALIASES = {
     "google": "600653000000",
     "trendyol": "8555",
     "hepsiburada": "7575",
     "vakifbank": "4888",
     "ziraat": "4747",
-    "facebook": ["FACEBOOK", "+320335320002"],  # 🔹 artık çoklu destekliyor
+    "facebook": ["FACEBOOK", "+320335320002"],
 }
 
-# Dosya yolları
 BASE_DIR      = os.path.dirname(os.path.abspath(__file__))
 SEEN_FILE     = os.path.join(BASE_DIR, "seen.json")
 ROUTES_FILE   = os.path.join(BASE_DIR, "routes.json")
@@ -37,18 +36,66 @@ REPORTS_FILE  = os.path.join(BASE_DIR, "reports.json")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
 log = logging.getLogger("goip-forwarder")
 
-# ---- HTTP session with retry/backoff ----
+# ==============================================================
+# === TELEGRAM API BLOĞU ===
+# ==============================================================
+
+def tg_delete_webhook(drop=True):
+    """Webhook'u kapatır (long polling için)"""
+    try:
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/deleteWebhook?drop_pending_updates={str(drop).lower()}"
+        r = requests.get(url, timeout=10)
+        if r.status_code == 200:
+            print("✅ Webhook silindi.")
+        else:
+            print(f"⚠️ Webhook silinemedi: {r.text}")
+    except Exception as e:
+        print(f"⚠️ Webhook silme hatası: {e}")
+
+def tg_api(method, params=None, use_get=False, timeout=15):
+    """Telegram API temel istek fonksiyonu"""
+    try:
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/{method}"
+        if use_get:
+            r = requests.get(url, params=params or {}, timeout=timeout)
+        else:
+            r = requests.post(url, json=params or {}, timeout=timeout)
+        return r
+    except Exception as e:
+        log.warning("tg_api hata: %s", e)
+        return None
+
+def tg_send_message(chat_id, text, reply_markup=None, parse_mode="HTML"):
+    try:
+        data = {"chat_id": chat_id, "text": text, "parse_mode": parse_mode, "disable_web_page_preview": True}
+        if reply_markup:
+            data["reply_markup"] = reply_markup
+        r = tg_api("sendMessage", data)
+        return r
+    except Exception as e:
+        log.error("tg_send_message hata: %s", e)
+        return None
+
+def tg_edit_message(chat_id, msg_id, text, reply_markup=None):
+    try:
+        data = {"chat_id": chat_id, "message_id": msg_id, "text": text, "parse_mode": "HTML"}
+        if reply_markup:
+            data["reply_markup"] = reply_markup
+        tg_api("editMessageText", data)
+    except Exception as e:
+        log.error("tg_edit_message hata: %s", e)
+
+def tg_reply_markup(buttons):
+    return {"inline_keyboard": [[{"text": t, "callback_data": d} for (t, d) in row] for row in buttons]}
+
+# ==============================================================
+
 def make_session() -> requests.Session:
     s = requests.Session()
     s.auth = HTTPBasicAuth(GOIP_USER, GOIP_PASS)
     s.headers.update({"User-Agent": "GoIP-SMS-Forwarder/1.0"})
-    retry = Retry(
-        total=3, connect=3, read=3,
-        backoff_factor=0.6,
-        status_forcelist=[502, 503, 504],
-        allowed_methods=["GET", "POST"],
-        raise_on_status=False, respect_retry_after_header=True,
-    )
+    retry = Retry(total=3, connect=3, read=3, backoff_factor=0.6,
+                  status_forcelist=[502, 503, 504], allowed_methods=["GET", "POST"])
     adapter = HTTPAdapter(max_retries=retry, pool_connections=4, pool_maxsize=8)
     s.mount("http://", adapter)
     s.mount("https://", adapter)
@@ -57,8 +104,9 @@ def make_session() -> requests.Session:
 SESSION = make_session()
 
 # ==============================================================
-# BURADA SADECE KOMUT ALIAS'I YAKALAYAN BÖLÜMÜ EKLİYORUZ
+# === TELEGRAM UPDATE + ALIAS DESTEĞİ ===
 # ==============================================================
+
 UPD_OFFSET = 0
 def tg_fetch_updates(timeout=20):
     global UPD_OFFSET
@@ -74,7 +122,6 @@ def tg_fetch_updates(timeout=20):
     results = data.get("result", [])
     if results: UPD_OFFSET = results[-1]["update_id"] + 1
 
-    # 🔹 alias komutları yakalayıp dönüştürüyoruz
     for update in results:
         msg = update.get("message") or {}
         text = (msg.get("text") or "").strip().lower()
@@ -84,21 +131,20 @@ def tg_fetch_updates(timeout=20):
                 brand = cmd.replace("ver", "").strip()
                 if brand in BRAND_ALIASES:
                     alias_val = BRAND_ALIASES[brand]
-                    # 🔸 listeyse birden fazla aliası kaydet
                     if isinstance(alias_val, list):
                         for num in alias_val:
                             msg_copy = msg.copy()
                             msg_copy["text"] = f"/{num}ver"
                             results.append({"message": msg_copy})
                     else:
-                        # 🔸 tek aliassa direkt çevir
-                        num = alias_val
-                        msg["text"] = f"/{num}ver"
+                        msg["text"] = f"/{alias_val}ver"
     return results
-# ===============================================================
 
-# (diğer fonksiyonlar senin gönderdiğin haliyle devam ediyor)
-# ...
+# ==============================================================
+
+# (buradan sonrası senin gönderdiğin kodla aynı şekilde devam ediyor)
+# parse_sms_blocks, handle_command, rapor, seen, routes, vs. her şey aynen kalabilir.
+
 
 # =============== GOIP ===============
 def fetch_html():
@@ -495,5 +541,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
